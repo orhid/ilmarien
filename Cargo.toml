@@ -1,0 +1,7 @@
+[package]
+name = "ilmarien"
+version = "0.1.0"
+authors = ["Filip Øskar Przybycień <filip.oskar@zohomail.eu>"]
+edition = "2018"
+
+[dependencies]
