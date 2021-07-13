@@ -1,0 +1,181 @@
+/* # colour spaces */
+
+pub struct HSB {
+    // all values are in the [0,1] interval
+    hue: f64,
+    sat: f64,
+    brt: f64,
+}
+
+impl HSB {
+    fn new(hue: f64, sat: f64, brt: f64) -> Self {
+        HSB {
+            hue: hue,
+            sat: sat,
+            brt: brt,
+        }
+    }
+
+    fn svg_colour(&self) -> String {
+        RGB::from(self).svg_colour()
+    }
+}
+
+impl From<&RGB> for HSB {
+    fn from(rgb: &RGB) -> Self {
+        let value = *[rgb.r, rgb.g, rgb.b].iter().max().unwrap();
+        let chroma = (value - *[rgb.r, rgb.g, rgb.b].iter().min().unwrap()) as f64 / 256.0;
+
+        HSB::new(
+            if chroma == 0.0 {
+                0.0
+            } else {
+                if value == rgb.r {
+                    (rgb.g - rgb.b) as f64 / (6.0 * chroma) + if rgb.g <= rgb.b { 0.0 } else { 1.0 }
+                } else {
+                    if value == rgb.g {
+                        (rgb.b - rgb.r) as f64 / (6.0 * chroma) + 1.0 / 3.0
+                    } else {
+                        (rgb.r - rgb.g) as f64 / (6.0 * chroma) + 2.0 / 3.0
+                    }
+                }
+            },
+            if value == 0 {
+                0.0
+            } else {
+                chroma / value as f64
+            },
+            value as f64 / 256.0,
+        )
+    }
+}
+
+pub struct RGB {
+    r: u8,
+    g: u8,
+    b: u8,
+}
+
+impl RGB {
+    fn new(r: u8, g: u8, b: u8) -> Self {
+        RGB { r: r, g: g, b: b }
+    }
+
+    fn svg_colour(&self) -> String {
+        format!("rgb({}, {}, {})", self.r, self.g, self.b)
+    }
+}
+
+impl From<&HSB> for RGB {
+    fn from(hsb: &HSB) -> Self {
+        fn hsb2u8(n: u8, hue: f64, sat: f64, brt: f64) -> u8 {
+            let k: f64 = (n as f64 + hue * 6.0) % 6.0;
+            (256.0 * brt * (1.0 - sat * 0.0_f64.max(1.0_f64.min(k.min(4.0 - k))))) as u8
+        }
+
+        let HSB { hue, sat, brt } = hsb;
+        RGB::new(
+            hsb2u8(5, *hue, *sat, *brt),
+            hsb2u8(3, *hue, *sat, *brt),
+            hsb2u8(1, *hue, *sat, *brt),
+        )
+    }
+}
+
+pub struct HEX {} //will do this later
+
+/* # inks */
+
+pub trait Ink {
+    fn paint(&self, sample: f64) -> String;
+}
+
+/* ## abstract inks */
+
+pub struct HueInk {
+    /* will vary the brightness at constant hue and saturation */
+    hue: f64,
+    sat: f64,
+}
+
+impl HueInk {
+    pub fn new(hue: f64, sat: f64) -> Self {
+        HueInk { hue: hue, sat: sat }
+    }
+}
+
+impl Ink for HueInk {
+    fn paint(&self, sample: f64) -> String {
+        HSB::new(self.hue, self.sat, sample).svg_colour()
+    }
+}
+
+/* ## geographic inks */
+
+pub struct ElevationInk;
+
+impl Ink for ElevationInk {
+    // one unit is around 54 meters
+    fn paint(&self, sample: f64) -> String {
+        let shore: u8 = 63;
+        let elv = (sample * 255.0) as u8;
+        if elv < shore - 16 {
+            RGB::new(53, 89, 92).svg_colour()
+        } else if elv < shore - 8 {
+            RGB::new(94, 138, 130).svg_colour()
+        } else if elv < shore - 2 {
+            RGB::new(134, 163, 151).svg_colour()
+        } else if elv < shore {
+            RGB::new(162, 184, 170).svg_colour()
+        } else if elv < shore + 2 {
+            RGB::new(243, 245, 237).svg_colour()
+        } else if elv < shore + 4 {
+            RGB::new(233, 235, 216).svg_colour()
+        } else if elv < shore + 8 {
+            RGB::new(214, 213, 188).svg_colour()
+        } else if elv < shore + 16 {
+            RGB::new(199, 191, 163).svg_colour()
+        } else if elv < shore + 32 {
+            RGB::new(184, 165, 134).svg_colour()
+        } else if elv < shore + 64 {
+            RGB::new(163, 131, 104).svg_colour()
+        } else if elv < shore + 128 {
+            RGB::new(138, 95, 80).svg_colour()
+        } else {
+            RGB::new(115, 71, 67).svg_colour()
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use float_eq::assert_float_eq;
+    const EPSILON: f64 = 0.0001;
+
+    #[test]
+    fn hsb2rgb() {
+        assert_eq!(RGB::from(&HSB::new(0.0, 1.0, 1.0)).r, 255);
+        assert_eq!(RGB::from(&HSB::new(1.0 / 3.0, 1.0, 1.0)).g, 255);
+        assert_eq!(RGB::from(&HSB::new(2.0 / 3.0, 1.0, 1.0)).b, 255);
+    }
+
+    #[test]
+    fn rgb2hsb() {
+        assert_float_eq!(
+            HSB::from(&RGB::new(255, 0, 0)).hue,
+            0.0 / 3.0,
+            abs <= EPSILON
+        );
+        assert_float_eq!(
+            HSB::from(&RGB::new(0, 255, 0)).hue,
+            1.0 / 3.0,
+            abs <= EPSILON
+        );
+        assert_float_eq!(
+            HSB::from(&RGB::new(0, 0, 255)).hue,
+            2.0 / 3.0,
+            abs <= EPSILON
+        );
+    }
+}
