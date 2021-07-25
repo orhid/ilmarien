@@ -6,8 +6,8 @@ edition = "2018"
 
 [dependencies]
 float_eq = "0.6"
+geo = "0.18.0"
 tiff = "0.7"
 svg = "0.10.0"
-nalgebra = "0.27.1"
 noise = "0.7"
 splines = "4.0.0"
