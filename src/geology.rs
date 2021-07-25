@@ -1,5 +1,5 @@
 use crate::imaging::cartography as crt;
-use nalgebra::Vector2;
+use geo::Coordinate;
 use noise::{NoiseFn, OpenSimplex, Seedable};
 use splines::{Interpolation, Key, Spline};
 use std::f64::consts::TAU;
@@ -21,10 +21,10 @@ fn elevation_ease_curve() -> Spline<f64, f64> {
 }
 
 fn elevation_generate_point(
-    point: &Vector2<i32>,
+    point: &Coordinate<i32>,
     noise: &OpenSimplex,
     curve: &Spline<f64, f64>,
-    resolution: u32,
+    resolution: usize,
     detail: i32,
 ) -> f64 {
     let x: f64 = TAU * point.x as f64 / resolution as f64;
@@ -54,7 +54,7 @@ fn elevation_generate_point(
     //((1.68 * value / amplitude) + 1.0) / 2.0
 }
 
-pub fn elevation_generate(resolution: u32, seed: u32) -> crt::Brane {
+pub fn elevation_generate(resolution: usize, seed: u32) -> crt::Brane {
     //! generate an elevation model from Perlin noise
 
     // prepare the noise
@@ -82,13 +82,13 @@ mod test {
         let noise = OpenSimplex::new();
         let curve = elevation_ease_curve();
         assert_float_eq!(
-            elevation_generate_point(&Vector2::new(0, 1), &noise, &curve, 4, 1),
-            elevation_generate_point(&Vector2::new(0, 5), &noise, &curve, 4, 1),
+            elevation_generate_point(&Coordinate { x: 0, y: 1 }, &noise, &curve, 4, 1),
+            elevation_generate_point(&Coordinate { x: 0, y: 5 }, &noise, &curve, 4, 1),
             abs <= EPSILON,
         );
         assert_float_eq!(
-            elevation_generate_point(&Vector2::new(1, 0), &noise, &curve, 4, 1),
-            elevation_generate_point(&Vector2::new(5, 0), &noise, &curve, 4, 1),
+            elevation_generate_point(&Coordinate { x: 1, y: 0 }, &noise, &curve, 4, 1),
+            elevation_generate_point(&Coordinate { x: 5, y: 0 }, &noise, &curve, 4, 1),
             abs <= EPSILON,
         );
     }
