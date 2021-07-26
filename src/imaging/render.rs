@@ -3,6 +3,7 @@ use crate::imaging::{
     colour::Ink,
     hexagonos::{Gon, Tile, Tileable},
 };
+use geo::orient::{Direction, Orient};
 use geo_booleanop::boolean::BooleanOp;
 use geo_types::{Coordinate, LineString, MultiPolygon, Polygon};
 use std::collections::HashMap;
@@ -12,22 +13,43 @@ trait ToSVG {
     fn svg(&self) -> Path;
 }
 
+fn _poly_to_svg(poly: &Polygon<f64>) -> String {
+    if poly.exterior().0.is_empty() {
+        "".into()
+    } else {
+        format!("M{}", _poly_rings_to_svg(poly))
+    }
+}
+
+fn _poly_rings_to_svg(poly: &Polygon<f64>) -> String {
+    let mut lines: Vec<LineString<f64>> = poly.interiors().into();
+    let exterior: &LineString<f64> = poly.exterior();
+    lines.insert(0, exterior.clone());
+
+    lines
+        .iter()
+        .map(|l| _poly_ring_to_svg(&l))
+        .collect::<Vec<String>>()
+        .join("M")
+}
+
+fn _poly_ring_to_svg(line: &LineString<f64>) -> String {
+    line.0
+        .iter()
+        .map(|c| _coord_to_svg(&c))
+        .collect::<Vec<String>>()
+        .join("L")
+}
+
+fn _coord_to_svg(coord: &Coordinate<f64>) -> String {
+    format!("{} {}", coord.x, coord.y)
+}
+
 impl ToSVG for Polygon<f64> {
     fn svg(&self) -> Path {
-        use std::fmt::Write;
-        let mut path = String::new();
-        for contour in std::iter::once(self.exterior()).chain(self.interiors().iter()) {
-            let mut points = contour.points_iter();
-            if let Some(first_point) = points.next() {
-                write!(path, "M {:?} {:?}", first_point.x(), first_point.y()).unwrap()
-            }
-            for point in points {
-                write!(path, " L {:?} {:?}", point.x(), point.y()).unwrap();
-            }
-            write!(path, " Z ").unwrap();
-        }
-
-        Path::new().set("fill-rule", "evenodd").set("d", path)
+        Path::new()
+            .set("d", _poly_to_svg(self))
+            .set("fill-rule", "evenodd")
     }
 }
 
@@ -72,7 +94,15 @@ impl Renderable for Brane {
                 multigon = multigon.union(&hexagon);
             }
             for polygon in multigon {
-                image = image.add(polygon.svg().set("fill", paint.as_str()));
+                // orienting should be done in union function and only for polygons with interiors
+                // others will work fine even if they are in the wrong orientation
+                // this might fuck with areas later though, so maybe orient all
+                image = image.add(
+                    polygon
+                        .orient(Direction::Default)
+                        .svg()
+                        .set("fill", paint.as_str()),
+                );
             }
         }
         let path_name = format!("bounce/{}-{}.svg", self.variable, self.resolution);
