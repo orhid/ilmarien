@@ -1,4 +1,4 @@
-use geo::Coordinate;
+use geo_types::Coordinate;
 use std::fs::File;
 use std::path::Path;
 use tiff::{decoder::*, encoder::*};

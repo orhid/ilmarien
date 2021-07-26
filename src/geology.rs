@@ -1,5 +1,5 @@
 use crate::imaging::cartography as crt;
-use geo::Coordinate;
+use geo_types::Coordinate;
 use noise::{NoiseFn, OpenSimplex, Seedable};
 use splines::{Interpolation, Key, Spline};
 use std::f64::consts::TAU;

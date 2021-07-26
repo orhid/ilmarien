@@ -16,8 +16,8 @@ impl HSB {
         }
     }
 
-    fn svg_colour(&self) -> String {
-        RGB::from(self).svg_colour()
+    fn paint(&self) -> String {
+        RGB::from(self).paint()
     }
 }
 
@@ -61,7 +61,7 @@ impl RGB {
         RGB { r: r, g: g, b: b }
     }
 
-    fn svg_colour(&self) -> String {
+    fn paint(&self) -> String {
         format!("rgb({}, {}, {})", self.r, self.g, self.b)
     }
 }
@@ -106,7 +106,7 @@ impl HueInk {
 
 impl Ink for HueInk {
     fn paint(&self, sample: f64) -> String {
-        HSB::new(self.hue, self.sat, sample).svg_colour()
+        HSB::new(self.hue, self.sat, sample).paint()
     }
 }
 
@@ -120,29 +120,29 @@ impl Ink for ElevationInk {
         let shore: u8 = 63;
         let elv = (sample * 255.0) as u8;
         if elv < shore - 16 {
-            RGB::new(53, 89, 92).svg_colour()
+            RGB::new(53, 89, 92).paint()
         } else if elv < shore - 8 {
-            RGB::new(94, 138, 130).svg_colour()
+            RGB::new(94, 138, 130).paint()
         } else if elv < shore - 2 {
-            RGB::new(134, 163, 151).svg_colour()
+            RGB::new(134, 163, 151).paint()
         } else if elv < shore {
-            RGB::new(162, 184, 170).svg_colour()
+            RGB::new(162, 184, 170).paint()
         } else if elv < shore + 2 {
-            RGB::new(243, 245, 237).svg_colour()
+            RGB::new(243, 245, 237).paint()
         } else if elv < shore + 4 {
-            RGB::new(233, 235, 216).svg_colour()
+            RGB::new(233, 235, 216).paint()
         } else if elv < shore + 8 {
-            RGB::new(214, 213, 188).svg_colour()
+            RGB::new(214, 213, 188).paint()
         } else if elv < shore + 16 {
-            RGB::new(199, 191, 163).svg_colour()
+            RGB::new(199, 191, 163).paint()
         } else if elv < shore + 32 {
-            RGB::new(184, 165, 134).svg_colour()
+            RGB::new(184, 165, 134).paint()
         } else if elv < shore + 64 {
-            RGB::new(163, 131, 104).svg_colour()
+            RGB::new(163, 131, 104).paint()
         } else if elv < shore + 128 {
-            RGB::new(138, 95, 80).svg_colour()
+            RGB::new(138, 95, 80).paint()
         } else {
-            RGB::new(115, 71, 67).svg_colour()
+            RGB::new(115, 71, 67).paint()
         }
     }
 }

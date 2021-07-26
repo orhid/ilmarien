@@ -1,4 +1,4 @@
-use geo::Coordinate;
+use geo_types::Coordinate;
 use std::f64::consts::TAU;
 const SQRT3: f64 = 1.7320508;
 
