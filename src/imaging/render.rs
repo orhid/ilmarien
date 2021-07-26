@@ -3,7 +3,9 @@ use crate::imaging::{
     colour::Ink,
     hexagonos::{Gon, Tile, Tileable},
 };
-use geo_types::{Coordinate, LineString, Polygon};
+use geo_booleanop::boolean::BooleanOp;
+use geo_types::{Coordinate, LineString, MultiPolygon, Polygon};
+use std::collections::HashMap;
 use svg::node::element::Path;
 
 trait ToSVG {
@@ -47,21 +49,31 @@ impl Renderable for Brane {
         T: Ink,
     {
         let one: i32 = self.resolution as i32;
+        let mut terraces = HashMap::new();
         let mut image = svg::Document::new().set("viewBox", (-one, -one, 2 * one, 2 * one));
 
         for point in self {
+            let paint = ink.paint(self.get(&point));
             let tiling: Coordinate<i32> = match point.tile(one) {
                 Tile::Y => Coordinate { x: 0, y: 0 },
                 Tile::R => Coordinate { x: 0, y: -one },
                 Tile::B => Coordinate { x: -one, y: 0 },
                 Tile::G => Coordinate { x: -one, y: -one },
             };
+            let hexagon = Polygon::new(LineString::from((point + tiling).corners()), vec![]);
+            let terrace = terraces.entry(paint).or_insert(Vec::<Polygon<f64>>::new());
+            terrace.push(hexagon);
+        }
 
-            image = image.add(
-                Polygon::new(LineString::from((point + tiling).corners()), vec![])
-                    .svg()
-                    .set("fill", ink.paint(self.get(&point))),
-            );
+        for (paint, terrace) in terraces {
+            let mut multigon = MultiPolygon::from(Vec::<Polygon<f64>>::new());
+            for hexagon in terrace {
+                // implement cascading union here
+                multigon = multigon.union(&hexagon);
+            }
+            for polygon in multigon {
+                image = image.add(polygon.svg().set("fill", paint.as_str()));
+            }
         }
         let path_name = format!("bounce/{}-{}.svg", self.variable, self.resolution);
         svg::save(&path_name, &image).unwrap();

@@ -5,7 +5,8 @@ authors = ["Filip Øskar Przybycień <filip.oskar@zohomail.eu>"]
 edition = "2018"
 
 [dependencies]
-geo-types = "0.7.2"
+geo-booleanop = "0.3.2"
+geo-types = "0.6.0"
 geo-svg = "0.5.0"
 tiff = "0.7"
 svg = "0.10.0"
