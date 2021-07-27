@@ -6,7 +6,7 @@ use crate::imaging::{
 use geo::orient::{Direction, Orient};
 use geo_booleanop::boolean::BooleanOp;
 use geo_types::{Coordinate, LineString, MultiPolygon, Polygon};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use svg::node::element::Path;
 
 trait ToSVG {
@@ -65,6 +65,16 @@ pub trait Renderable {
     */
 }
 
+fn cascade(mut terrace: VecDeque<MultiPolygon<f64>>) -> MultiPolygon<f64> {
+    // this can be less naive
+    while terrace.len() > 1 {
+        let polya = terrace.pop_front().unwrap();
+        let polyb = terrace.pop_front().unwrap();
+        terrace.push_back(polya.union(&polyb));
+    }
+    terrace.pop_front().unwrap()
+}
+
 impl Renderable for Brane {
     fn render<T>(&self, ink: T)
     where
@@ -72,27 +82,25 @@ impl Renderable for Brane {
     {
         let one: i32 = self.resolution as i32;
         let mut terraces = HashMap::new();
-        let mut image = svg::Document::new().set("viewBox", (-one, -one, 2 * one, 2 * one));
-
         for point in self {
-            let paint = ink.paint(self.get(&point));
             let tiling: Coordinate<i32> = match point.tile(one) {
                 Tile::Y => Coordinate { x: 0, y: 0 },
                 Tile::R => Coordinate { x: 0, y: -one },
                 Tile::B => Coordinate { x: -one, y: 0 },
                 Tile::G => Coordinate { x: -one, y: -one },
             };
-            let hexagon = Polygon::new(LineString::from((point + tiling).corners()), vec![]);
-            let terrace = terraces.entry(paint).or_insert(Vec::<Polygon<f64>>::new());
-            terrace.push(hexagon);
+            terraces
+                .entry(ink.paint(self.get(&point)))
+                .or_insert(VecDeque::<MultiPolygon<f64>>::new())
+                .push_back(MultiPolygon::from(vec![Polygon::new(
+                    LineString::from((point + tiling).corners()),
+                    vec![],
+                )]));
         }
 
+        let mut image = svg::Document::new().set("viewBox", (-one, -one, 2 * one, 2 * one));
         for (paint, terrace) in terraces {
-            let mut multigon = MultiPolygon::from(Vec::<Polygon<f64>>::new());
-            for hexagon in terrace {
-                // implement cascading union here
-                multigon = multigon.union(&hexagon);
-            }
+            let multigon = cascade(terrace);
             for polygon in multigon {
                 // orienting should be done in union function and only for polygons with interiors
                 // others will work fine even if they are in the wrong orientation
