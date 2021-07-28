@@ -6,6 +6,7 @@ use crate::imaging::{
 use geo::orient::{Direction, Orient};
 use geo_booleanop::boolean::BooleanOp;
 use geo_types::{Coordinate, LineString, MultiPolygon, Polygon};
+use log::info;
 use std::collections::{HashMap, VecDeque};
 use svg::node::element::Path;
 
@@ -80,6 +81,7 @@ impl Renderable for Brane {
     where
         T: Ink,
     {
+        info!("rendering brane {}", self.variable);
         let one: i32 = self.resolution as i32;
         let mut terraces = HashMap::new();
         for point in self {

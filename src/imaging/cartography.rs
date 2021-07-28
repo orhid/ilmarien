@@ -1,4 +1,5 @@
 use geo_types::Coordinate;
+use log::info;
 use std::fs::File;
 use std::path::Path;
 use tiff::{decoder::*, encoder::*};
@@ -14,6 +15,7 @@ pub struct Brane {
 impl Brane {
     pub fn save(&self) {
         let path_name = format!("static/{}-{}.tif", self.variable, self.resolution);
+        info!("saving brane at {}", path_name);
         TiffEncoder::new(&mut File::create(&Path::new(&path_name)).unwrap())
             .unwrap()
             .write_image::<colortype::Gray16>(
@@ -70,6 +72,7 @@ fn unravel(point: &Coordinate<i32>, resolution: usize) -> usize {
 }
 
 pub fn new(variable: String, resolution: usize) -> Brane {
+    info!("initialising empty brane with resolution {}", resolution);
     Brane {
         grid: (0..usize::pow(resolution, 2)).map(|_| 0).collect(),
         variable: variable,
@@ -79,8 +82,8 @@ pub fn new(variable: String, resolution: usize) -> Brane {
 
 pub fn load(variable: String) -> Brane {
     // TODO : open file with best avaliable resolution
-
     let path_name = format!("static/{}.tif", variable);
+    info!("loading brane from {}", path_name);
     let mut file = File::open(&Path::new(&path_name)).unwrap();
     let mut tiff = Decoder::new(&mut file).unwrap();
     Brane {

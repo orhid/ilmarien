@@ -1,5 +1,6 @@
 use crate::imaging::cartography as crt;
 use geo_types::Coordinate;
+use log::info;
 use noise::{NoiseFn, OpenSimplex, Seedable};
 use splines::{Interpolation, Key, Spline};
 use std::f64::consts::TAU;
@@ -57,6 +58,7 @@ fn elevation_generate_point(
 pub fn elevation_generate(resolution: usize, seed: u32) -> crt::Brane {
     //! generate an elevation model from Perlin noise
 
+    info!("generating elevation model");
     // prepare the noise
     let noise = OpenSimplex::new().set_seed(seed);
     let curve = elevation_ease_curve();
