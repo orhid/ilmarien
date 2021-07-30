@@ -1,6 +1,5 @@
 use ilmarien::geology as glg;
-use ilmarien::imaging::colour as clr;
-use ilmarien::imaging::render::Renderable;
+use ilmarien::imaging::{colour as clr, render::Renderable};
 use log::info;
 use pretty_env_logger;
 

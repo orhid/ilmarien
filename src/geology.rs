@@ -2,6 +2,7 @@ use crate::imaging::cartography as crt;
 use geo_types::Coordinate;
 use log::info;
 use noise::{NoiseFn, OpenSimplex, Seedable};
+use rayon::prelude::*;
 use splines::{Interpolation, Key, Spline};
 use std::f64::consts::TAU;
 
@@ -22,14 +23,13 @@ fn elevation_ease_curve() -> Spline<f64, f64> {
 }
 
 fn elevation_generate_point(
-    point: &Coordinate<i32>,
+    point: &Coordinate<f64>,
     noise: &OpenSimplex,
     curve: &Spline<f64, f64>,
-    resolution: usize,
-    detail: i32,
 ) -> f64 {
-    let x: f64 = TAU * point.x as f64 / resolution as f64;
-    let y: f64 = TAU * point.y as f64 / resolution as f64;
+    let detail: i32 = 12;
+    let x: f64 = TAU * point.x;
+    let y: f64 = TAU * point.y;
 
     let amplifactor: f64 = 1.44;
     let amplitude: f64 = (0..detail)
@@ -38,7 +38,7 @@ fn elevation_generate_point(
 
     let value = (0..detail)
         .map(|level| {
-            let freq = 1.21 * 2.0_f64.powi(level);
+            let freq = 0.84 * 2.0_f64.powi(level); // the first number controls scale
             let ampli = amplifactor.powi(-level);
             let factor: f64 = 3.0_f64.sqrt() / 2.0; //this should lessen the distortion
 
@@ -52,7 +52,6 @@ fn elevation_generate_point(
         })
         .sum::<f64>();
     curve.clamped_sample(1.68 * value / amplitude).unwrap()
-    //((1.68 * value / amplitude) + 1.0) / 2.0
 }
 
 pub fn elevation_generate(resolution: usize, seed: u32) -> crt::Brane {
@@ -64,12 +63,18 @@ pub fn elevation_generate(resolution: usize, seed: u32) -> crt::Brane {
     let curve = elevation_ease_curve();
 
     let mut brane = crt::new("elevation".to_string(), resolution);
-    for point in &brane {
-        brane.insert(
-            &point,
-            elevation_generate_point(&point, &noise, &curve, brane.resolution, 12),
-        );
-    }
+    /*
+    brane.grid = brane
+        .into_par_iter()
+        .map(|point| crt::encode(elevation_generate_point(&point, &noise, &curve)))
+        .collect();
+    */
+    brane.engrid(
+        brane
+            .into_par_iter()
+            .map(|point| elevation_generate_point(&point, &noise, &curve))
+            .collect(),
+    );
     brane
 }
 
@@ -84,13 +89,13 @@ mod test {
         let noise = OpenSimplex::new();
         let curve = elevation_ease_curve();
         assert_float_eq!(
-            elevation_generate_point(&Coordinate { x: 0, y: 1 }, &noise, &curve, 4, 1),
-            elevation_generate_point(&Coordinate { x: 0, y: 5 }, &noise, &curve, 4, 1),
+            elevation_generate_point(&Coordinate { x: 0.0, y: 0.1 }, &noise, &curve),
+            elevation_generate_point(&Coordinate { x: 0.0, y: 1.1 }, &noise, &curve),
             abs <= EPSILON,
         );
         assert_float_eq!(
-            elevation_generate_point(&Coordinate { x: 1, y: 0 }, &noise, &curve, 4, 1),
-            elevation_generate_point(&Coordinate { x: 5, y: 0 }, &noise, &curve, 4, 1),
+            elevation_generate_point(&Coordinate { x: 0.1, y: 0.0 }, &noise, &curve),
+            elevation_generate_point(&Coordinate { x: 1.1, y: 0.0 }, &noise, &curve),
             abs <= EPSILON,
         );
     }

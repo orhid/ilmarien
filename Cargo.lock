@@ -353,6 +353,7 @@ dependencies = [
  "log",
  "noise",
  "pretty_env_logger",
+ "rayon",
  "splines",
  "svg",
  "tiff 0.7.0",

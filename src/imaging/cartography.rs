@@ -1,5 +1,6 @@
 use geo_types::Coordinate;
 use log::info;
+use rayon::prelude::*;
 use std::fs::File;
 use std::path::Path;
 use tiff::{decoder::*, encoder::*};
@@ -7,7 +8,7 @@ use tiff::{decoder::*, encoder::*};
 /* branes */
 
 pub struct Brane {
-    grid: Vec<u16>,
+    pub grid: Vec<u16>,
     pub variable: String,
     pub resolution: usize,
 }
@@ -31,6 +32,10 @@ impl Brane {
         self.grid[unravel(&point, self.resolution)] = encode(value);
     }
 
+    pub fn engrid(&mut self, vector: Vec<f64>) {
+        self.grid = vector.into_par_iter().map(|value| encode(value)).collect();
+    }
+
     pub fn get(&self, point: &Coordinate<i32>) -> f64 {
         decode(self.grid[unravel(point, self.resolution)])
     }
@@ -48,7 +53,19 @@ impl IntoIterator for &Brane {
     }
 }
 
-fn encode(value: f64) -> u16 {
+impl IntoParallelIterator for &Brane {
+    type Item = Coordinate<f64>;
+    type Iter = rayon::vec::IntoIter<Self::Item>;
+
+    fn into_par_iter(self) -> Self::Iter {
+        (0..usize::pow(self.resolution as usize, 2))
+            .map(|j| cast(&enravel(j, self.resolution), self.resolution))
+            .collect::<Vec<Coordinate<f64>>>()
+            .into_par_iter()
+    }
+}
+
+pub fn encode(value: f64) -> u16 {
     //! encode a float from the [0,1] interval to u16 bit range
     (value * 65535.0) as u16
 }
@@ -63,6 +80,14 @@ fn enravel(j: usize, resolution: usize) -> Coordinate<i32> {
     Coordinate {
         x: (j / resolution) as i32,
         y: (j % resolution) as i32,
+    }
+}
+
+fn cast(point: &Coordinate<i32>, resolution: usize) -> Coordinate<f64> {
+    //! return a point in the unit square, regardless of resolution
+    Coordinate {
+        x: point.x as f64 / resolution as f64,
+        y: point.y as f64 / resolution as f64,
     }
 }
 
