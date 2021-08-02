@@ -63,12 +63,6 @@ pub fn elevation_generate(resolution: usize, seed: u32) -> crt::Brane {
     let curve = elevation_ease_curve();
 
     let mut brane = crt::new("elevation".to_string(), resolution);
-    /*
-    brane.grid = brane
-        .into_par_iter()
-        .map(|point| crt::encode(elevation_generate_point(&point, &noise, &curve)))
-        .collect();
-    */
     brane.engrid(
         brane
             .into_par_iter()

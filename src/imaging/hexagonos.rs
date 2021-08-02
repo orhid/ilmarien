@@ -5,13 +5,37 @@ const SQRT3: f64 = 1.7320508;
 /* local */
 
 pub trait Gon {
+    fn neighbour_unsafe(&self, n: usize) -> Self;
+
     fn neighbour(&self, n: usize, modulo: i32) -> Self;
+
+    fn ambit_unsafe(&self) -> Vec<Self>
+    where
+        Self: Sized,
+    {
+        (0..6).map(|n| self.neighbour_unsafe(n)).collect()
+    }
 
     fn ambit(&self, modulo: i32) -> Vec<Self>
     where
         Self: Sized,
     {
         (0..6).map(|n| self.neighbour(n, modulo)).collect()
+    }
+
+    fn ring(&self, radius: i32) -> Vec<Self>
+    where
+        Self: Sized;
+
+    fn ball(&self, radius: i32) -> Vec<Self>
+    where
+        Self: Sized + Copy,
+    {
+        let mut ball = vec![*self];
+        for j in 1..=radius {
+            ball.append(&mut self.ring(j));
+        }
+        ball
     }
 
     fn centre(&self) -> Coordinate<f64>;
@@ -25,6 +49,39 @@ pub trait Gon {
 }
 
 impl Gon for Coordinate<i32> {
+    fn neighbour_unsafe(&self, n: usize) -> Self {
+        match n % 6 {
+            0 => Coordinate {
+                x: (self.x + 1),
+                y: self.y,
+            },
+            1 => Coordinate {
+                x: (self.x + 1),
+                y: (self.y - 1),
+            },
+            2 => Coordinate {
+                x: self.x,
+                y: (self.y - 1),
+            },
+            3 => Coordinate {
+                x: (self.x - 1),
+                y: self.y,
+            },
+            4 => Coordinate {
+                x: (self.x - 1),
+                y: (self.y + 1),
+            },
+            5 => Coordinate {
+                x: self.x,
+                y: (self.y + 1),
+            },
+            _ => Coordinate {
+                x: self.x,
+                y: self.y,
+            },
+        }
+    }
+
     fn neighbour(&self, n: usize, modulo: i32) -> Self {
         match n % 6 {
             0 => Coordinate {
@@ -58,6 +115,22 @@ impl Gon for Coordinate<i32> {
         }
     }
 
+    fn ring(&self, radius: i32) -> Vec<Self> {
+        let mut gon = *self
+            + Coordinate {
+                x: (-radius),
+                y: (radius),
+            };
+        let mut ring = Vec::<Self>::new();
+        for j in 0..6 {
+            for _ in 0..radius {
+                ring.push(gon);
+                gon = gon.neighbour_unsafe(j);
+            }
+        }
+        ring
+    }
+
     fn centre(&self) -> Coordinate<f64> {
         Coordinate {
             x: self.x as f64 * 1.5,
@@ -72,6 +145,57 @@ impl Gon for Coordinate<i32> {
                 x: angle.cos(),
                 y: angle.sin(),
             }
+    }
+}
+
+pub trait PreGon {
+    fn find(&self) -> Coordinate<i32>;
+
+    fn centre(&self) -> Coordinate<f64>;
+}
+
+fn _distance(left: &Coordinate<f64>, right: &Coordinate<f64>) -> f64 {
+    (left.x - right.x).abs() + (left.y - right.y).abs()
+}
+
+impl PreGon for Coordinate<f64> {
+    fn find(&self) -> Coordinate<i32> {
+        let xfloor = self.x.floor();
+        let yfloor = self.y.floor();
+        let mut candidates = vec![
+            Coordinate {
+                x: xfloor,
+                y: yfloor,
+            },
+            Coordinate {
+                x: xfloor + 1.0,
+                y: yfloor,
+            },
+            Coordinate {
+                x: xfloor,
+                y: yfloor + 1.0,
+            },
+            Coordinate {
+                x: xfloor + 1.0,
+                y: yfloor + 1.0,
+            },
+        ];
+        candidates.sort_by(|a, b| {
+            _distance(self, &a)
+                .partial_cmp(&_distance(self, &b))
+                .unwrap()
+        });
+        Coordinate {
+            x: candidates[0].x as i32,
+            y: candidates[0].y as i32,
+        }
+    }
+
+    fn centre(&self) -> Coordinate<f64> {
+        Coordinate {
+            x: self.x * 1.5,
+            y: self.x * SQRT3 / 2.0 + self.y * SQRT3,
+        }
     }
 }
 
@@ -160,6 +284,26 @@ mod test {
         assert_eq!(
             Coordinate { x: 0, y: 0 }.corners()[0],
             Coordinate { x: 1.0, y: 0.0 }
+        );
+    }
+
+    #[test]
+    fn find() {
+        assert_eq!(
+            Coordinate { x: 0.1, y: 0.1 }.find(),
+            Coordinate { x: 0, y: 0 },
+        );
+        assert_eq!(
+            Coordinate { x: 0.1, y: 0.9 }.find(),
+            Coordinate { x: 0, y: 1 },
+        );
+        assert_eq!(
+            Coordinate { x: 0.9, y: 0.1 }.find(),
+            Coordinate { x: 1, y: 0 },
+        );
+        assert_eq!(
+            Coordinate { x: 0.9, y: 0.9 }.find(),
+            Coordinate { x: 1, y: 1 },
         );
     }
 

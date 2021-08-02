@@ -21,6 +21,7 @@ geo-types = "0.7.2"
 geo-svg = "0.5.0"
 noise = "0.7"
 splines = "4.0.0"
+nalgebra = "0.28.0"
 
 [dev-dependencies]
 float_eq = "0.6"

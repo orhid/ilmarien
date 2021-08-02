@@ -1,3 +1,4 @@
+use crate::imaging::hexagonos::PreGon;
 use geo_types::Coordinate;
 use log::info;
 use rayon::prelude::*;
@@ -38,6 +39,18 @@ impl Brane {
 
     pub fn get(&self, point: &Coordinate<i32>) -> f64 {
         decode(self.grid[unravel(point, self.resolution)])
+    }
+
+    pub fn find(&self, point: &Coordinate<f64>) -> Coordinate<i32> {
+        Coordinate {
+            x: self.resolution as f64 * point.x,
+            y: self.resolution as f64 * point.y,
+        }
+        .find()
+    }
+
+    pub fn find_value(&self, point: &Coordinate<f64>) -> f64 {
+        self.get(&self.find(point))
     }
 }
 
