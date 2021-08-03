@@ -1,3 +1,2 @@
-pub mod geology;
+pub mod climate;
 pub mod imaging;
-pub mod insolation;

@@ -37,8 +37,16 @@ impl Brane {
         self.grid = vector.into_par_iter().map(|value| encode(value)).collect();
     }
 
+    pub fn engrid_exact(&mut self, vector: Vec<u16>) {
+        self.grid = vector;
+    }
+
     pub fn get(&self, point: &Coordinate<i32>) -> f64 {
         decode(self.grid[unravel(point, self.resolution)])
+    }
+
+    pub fn get_exact(&self, point: &Coordinate<i32>) -> u16 {
+        self.grid[unravel(point, self.resolution)]
     }
 
     pub fn find(&self, point: &Coordinate<f64>) -> Coordinate<i32> {
@@ -51,6 +59,10 @@ impl Brane {
 
     pub fn find_value(&self, point: &Coordinate<f64>) -> f64 {
         self.get(&self.find(point))
+    }
+
+    pub fn find_value_exact(&self, point: &Coordinate<f64>) -> u16 {
+        self.get_exact(&self.find(point))
     }
 }
 
