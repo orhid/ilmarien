@@ -1,4 +1,4 @@
-use crate::imaging::cartography as crt;
+use crate::imaging::cartography::Brane;
 use geo_types::Coordinate;
 use log::info;
 use rayon::prelude::*;
@@ -13,7 +13,7 @@ pub enum Surface {
     Stone,
 }
 
-fn encode(surface: Surface) -> u16 {
+fn encode(surface: Surface) -> u8 {
     match surface {
         Surface::Water => 0,
         Surface::Ice => 1,
@@ -22,7 +22,7 @@ fn encode(surface: Surface) -> u16 {
     }
 }
 
-pub fn decode(value: u16) -> Surface {
+pub fn decode(value: u8) -> Surface {
     match value {
         0 => Surface::Water,
         1 => Surface::Ice,
@@ -32,33 +32,31 @@ pub fn decode(value: u16) -> Surface {
     }
 }
 
-fn surface_calculate_point(point: &Coordinate<f64>, water: &crt::Brane) -> Surface {
-    if water.find_value(&point) > 0.0 {
+fn surface_calculate_point(point: &Coordinate<f64>, ocean: &Brane<f64>) -> Surface {
+    if ocean.get(&point) > 0.0 {
         Surface::Water
     } else {
         Surface::Stone
     }
 }
 
-pub fn surface_calculate(resolution: usize, water: &crt::Brane) -> crt::Brane {
-    //! calculate surface type
-
+/// calculate surface type
+pub fn surface_calculate(resolution: usize, ocean: &Brane<f64>) -> Brane<u8> {
     info!("calculating surface type");
 
-    let mut brane = crt::new("surface".to_string(), resolution);
-    brane.engrid_exact(
-        brane
-            .into_par_iter()
-            .map(|point| encode(surface_calculate_point(&point, &water)))
-            .collect(),
+    let mut brane = Brane::from(
+        Brane::<u8>::vec_par_iter(resolution)
+            .map(|point| encode(surface_calculate_point(&point, &ocean)))
+            .collect::<Vec<u8>>(),
     );
+    brane.variable = "surface".to_string();
     brane
 }
 
 /* albedo */
 
-fn albedo_calculate_point(point: &Coordinate<f64>, surface: &crt::Brane) -> f64 {
-    match decode(surface.get_exact(&surface.find(&point))) {
+fn albedo_calculate_point(point: &Coordinate<f64>, surface: &Brane<u8>) -> f64 {
+    match decode(surface.get(&point)) {
         Surface::Water => 0.06,
         Surface::Ice => 0.36,
         Surface::Snow => 0.9,
@@ -66,17 +64,15 @@ fn albedo_calculate_point(point: &Coordinate<f64>, surface: &crt::Brane) -> f64 
     }
 }
 
-pub fn albedo_calculate(resolution: usize, surface: &crt::Brane) -> crt::Brane {
-    //! calculate surface albedo
-
+/// calculate surface albedo
+pub fn albedo_calculate(resolution: usize, surface: &Brane<u8>) -> Brane<f64> {
     info!("calculating surface albedo");
 
-    let mut brane = crt::new("albedo".to_string(), resolution);
-    brane.engrid(
-        brane
-            .into_par_iter()
+    let mut brane = Brane::from(
+        Brane::<f64>::vec_par_iter(resolution)
             .map(|point| albedo_calculate_point(&point, &surface))
-            .collect(),
+            .collect::<Vec<f64>>(),
     );
+    brane.variable = "albedo".to_string();
     brane
 }

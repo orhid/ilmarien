@@ -2,25 +2,20 @@ use geo_types::Coordinate;
 use std::f64::consts::TAU;
 const SQRT3: f64 = 1.7320508;
 
-/* local */
+/* # local */
 
 pub trait Gon {
-    fn neighbour_unsafe(&self, n: usize) -> Self;
+    /* # unmodulated ambits */
 
-    fn neighbour(&self, n: usize, modulo: i32) -> Self;
+    /// neigbour in the given direction, without modulus
+    fn neighbour_full(&self, n: usize) -> Self;
 
-    fn ambit_unsafe(&self) -> Vec<Self>
+    /// all neighbours, without modulus
+    fn ambit_full(&self) -> Vec<Self>
     where
         Self: Sized,
     {
-        (0..6).map(|n| self.neighbour_unsafe(n)).collect()
-    }
-
-    fn ambit(&self, modulo: i32) -> Vec<Self>
-    where
-        Self: Sized,
-    {
-        (0..6).map(|n| self.neighbour(n, modulo)).collect()
+        (0..6).map(|n| self.neighbour_full(n)).collect()
     }
 
     fn ring(&self, radius: i32) -> Vec<Self>
@@ -38,6 +33,21 @@ pub trait Gon {
         ball
     }
 
+    /* # toroidal ambits */
+
+    /// neigbour in the given direction, wrapped toroidally
+    fn neighbour(&self, n: usize, modulo: i32) -> Self;
+
+    /// all neighbours, wrapped toroidally
+    fn ambit(&self, modulo: i32) -> Vec<Self>
+    where
+        Self: Sized,
+    {
+        (0..6).map(|n| self.neighbour(n, modulo)).collect()
+    }
+
+    /* # casting */
+
     fn centre(&self) -> Coordinate<f64>;
 
     fn corner(&self, centre: Coordinate<f64>, n: usize) -> Coordinate<f64>;
@@ -49,7 +59,7 @@ pub trait Gon {
 }
 
 impl Gon for Coordinate<i32> {
-    fn neighbour_unsafe(&self, n: usize) -> Self {
+    fn neighbour_full(&self, n: usize) -> Self {
         match n % 6 {
             0 => Coordinate {
                 x: (self.x + 1),
@@ -125,7 +135,7 @@ impl Gon for Coordinate<i32> {
         for j in 0..6 {
             for _ in 0..radius {
                 ring.push(gon);
-                gon = gon.neighbour_unsafe(j);
+                gon = gon.neighbour_full(j);
             }
         }
         ring
@@ -154,7 +164,7 @@ pub trait PreGon {
     fn centre(&self) -> Coordinate<f64>;
 }
 
-fn _distance(left: &Coordinate<f64>, right: &Coordinate<f64>) -> f64 {
+fn distance(left: &Coordinate<f64>, right: &Coordinate<f64>) -> f64 {
     (left.x - right.x).abs() + (left.y - right.y).abs()
 }
 
@@ -180,11 +190,7 @@ impl PreGon for Coordinate<f64> {
                 y: yfloor + 1.0,
             },
         ];
-        candidates.sort_by(|a, b| {
-            _distance(self, &a)
-                .partial_cmp(&_distance(self, &b))
-                .unwrap()
-        });
+        candidates.sort_by(|a, b| distance(self, &a).partial_cmp(&distance(self, &b)).unwrap());
         Coordinate {
             x: candidates[0].x as i32,
             y: candidates[0].y as i32,
@@ -199,7 +205,7 @@ impl PreGon for Coordinate<f64> {
     }
 }
 
-/* global */
+/* # global */
 
 #[derive(Debug, PartialEq)]
 pub enum Tile {
@@ -243,7 +249,7 @@ impl Tileable for Coordinate<i32> {
 mod test {
     use super::*;
 
-    /* local */
+    /* # local */
 
     #[test]
     fn neighbour() {
@@ -307,7 +313,7 @@ mod test {
         );
     }
 
-    /* global */
+    /* # global */
 
     #[test]
     fn tile_placement() {

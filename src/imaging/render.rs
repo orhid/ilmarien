@@ -10,54 +10,58 @@ use log::info;
 use std::collections::{HashMap, VecDeque};
 use svg::node::element::Path;
 
+/* # geometry to svg */
+
 trait ToSVG {
     fn svg(&self) -> Path;
 }
 
-fn _poly_to_svg(poly: &Polygon<f64>) -> String {
+fn poly_to_svg(poly: &Polygon<f64>) -> String {
     if poly.exterior().0.is_empty() {
         "".into()
     } else {
-        format!("M{}", _poly_rings_to_svg(poly))
+        format!("M{}", poly_rings_to_svg(poly))
     }
 }
 
-fn _poly_rings_to_svg(poly: &Polygon<f64>) -> String {
+fn poly_rings_to_svg(poly: &Polygon<f64>) -> String {
     let mut lines: Vec<LineString<f64>> = poly.interiors().into();
     let exterior: &LineString<f64> = poly.exterior();
     lines.insert(0, exterior.clone());
 
     lines
         .iter()
-        .map(|l| _poly_ring_to_svg(&l))
+        .map(|l| poly_ring_to_svg(&l))
         .collect::<Vec<String>>()
         .join("M")
 }
 
-fn _poly_ring_to_svg(line: &LineString<f64>) -> String {
+fn poly_ring_to_svg(line: &LineString<f64>) -> String {
     line.0
         .iter()
-        .map(|c| _coord_to_svg(&c))
+        .map(|c| coord_to_svg(&c))
         .collect::<Vec<String>>()
         .join("L")
 }
 
-fn _coord_to_svg(coord: &Coordinate<f64>) -> String {
+fn coord_to_svg(coord: &Coordinate<f64>) -> String {
     format!("{} {}", coord.x, coord.y)
 }
 
 impl ToSVG for Polygon<f64> {
     fn svg(&self) -> Path {
         Path::new()
-            .set("d", _poly_to_svg(self))
+            .set("d", poly_to_svg(self))
             .set("fill-rule", "evenodd")
     }
 }
 
-pub trait Renderable {
-    fn render<T>(&self, ink: T)
+/* # rendering branes */
+
+pub trait Renderable<T> {
+    fn render<S>(&self, ink: S)
     where
-        T: Ink;
+        S: Ink<T>;
 
     /*
     fn render_triple<T>(&self, ink: T)
@@ -66,6 +70,7 @@ pub trait Renderable {
     */
 }
 
+/// performs a union on a queue of polygons
 fn cascade(mut terrace: VecDeque<MultiPolygon<f64>>) -> MultiPolygon<f64> {
     // this can be less naive
     while terrace.len() > 1 {
@@ -76,15 +81,15 @@ fn cascade(mut terrace: VecDeque<MultiPolygon<f64>>) -> MultiPolygon<f64> {
     terrace.pop_front().unwrap()
 }
 
-impl Renderable for Brane {
-    fn render<T>(&self, ink: T)
+impl<T: Copy> Renderable<T> for Brane<T> {
+    fn render<S>(&self, ink: S)
     where
-        T: Ink,
+        S: Ink<T>,
     {
         info!("rendering brane {}", self.variable);
         let one: i32 = self.resolution as i32;
         let mut terraces = HashMap::new();
-        for point in self {
+        for point in self.exact_iter() {
             let tiling: Coordinate<i32> = match point.tile(one) {
                 Tile::Y => Coordinate { x: 0, y: 0 },
                 Tile::R => Coordinate { x: 0, y: -one },
@@ -92,7 +97,7 @@ impl Renderable for Brane {
                 Tile::G => Coordinate { x: -one, y: -one },
             };
             terraces
-                .entry(ink.paint(self.get(&point)))
+                .entry(ink.paint(self.read(&point)))
                 .or_insert(VecDeque::<MultiPolygon<f64>>::new())
                 .push_back(MultiPolygon::from(vec![Polygon::new(
                     LineString::from((point + tiling).corners()),

@@ -82,18 +82,19 @@ impl From<&HSB> for RGB {
     }
 }
 
-pub struct HEX {} //will do this later
+//will do this later
+pub struct HEX {}
 
 /* # inks */
 
-pub trait Ink {
-    fn paint(&self, sample: f64) -> String;
+pub trait Ink<T> {
+    fn paint(&self, sample: T) -> String;
 }
 
 /* ## abstract inks */
 
+/// will vary the brightness at constant hue and saturation
 pub struct HueInk {
-    /* will vary the brightness at constant hue and saturation */
     hue: f64,
     sat: f64,
 }
@@ -104,7 +105,7 @@ impl HueInk {
     }
 }
 
-impl Ink for HueInk {
+impl Ink<f64> for HueInk {
     fn paint(&self, sample: f64) -> String {
         HSB::new(self.hue, self.sat, sample).paint()
     }
@@ -114,7 +115,7 @@ impl Ink for HueInk {
 
 pub struct ElevationInk;
 
-impl Ink for ElevationInk {
+impl Ink<f64> for ElevationInk {
     // one unit is around 54 meters
     fn paint(&self, sample: f64) -> String {
         let shore: u8 = 63;
