@@ -1,4 +1,4 @@
-use crate::imaging::cartography as crt;
+use crate::imaging::cartography::Brane;
 use geo_types::Coordinate;
 use log::info;
 use noise::{NoiseFn, OpenSimplex, Seedable};
@@ -54,21 +54,18 @@ fn elevation_generate_point(
     curve.clamped_sample(1.68 * value / amplitude).unwrap()
 }
 
-pub fn elevation_generate(resolution: usize, seed: u32) -> crt::Brane {
-    //! generate an elevation model from Perlin noise
-
+/// generate an elevation model from Perlin noise
+pub fn elevation_generate(resolution: usize, seed: u32) -> Brane<f64> {
     info!("generating elevation model");
-    // prepare the noise
     let noise = OpenSimplex::new().set_seed(seed);
     let curve = elevation_ease_curve();
 
-    let mut brane = crt::new("elevation".to_string(), resolution);
-    brane.engrid(
-        brane
-            .into_par_iter()
+    let mut brane = Brane::from(
+        Brane::<f64>::vec_par_iter(resolution)
             .map(|point| elevation_generate_point(&point, &noise, &curve))
-            .collect(),
+            .collect::<Vec<f64>>(),
     );
+    brane.variable = "elevation".to_string();
     brane
 }
 

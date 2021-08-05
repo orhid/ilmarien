@@ -362,6 +362,7 @@ dependencies = [
  "log",
  "nalgebra",
  "noise",
+ "num-traits",
  "pretty_env_logger",
  "rayon",
  "splines",

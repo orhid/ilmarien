@@ -1,34 +1,26 @@
 use crate::climate::surface::{decode, Surface};
 use crate::imaging::{
-    cartography::{new, Brane},
+    cartography::Brane,
     hexagonos::{Gon, PreGon},
 };
 use geo_types::Coordinate;
-//use log::debug;
 use log::info;
 use nalgebra::Vector3;
 use rayon::prelude::*;
 use std::f64::consts::TAU;
 
-/* insolation */
-
-const MAX_WATCH: usize = 16;
-
-fn insolation_curve(value: f64) -> f64 {
-    1.8 * value - 3.2
-}
-
-fn insolation_watch_curve(value: f64) -> f64 {
-    //debug!("{:?}", value - 0.5);
-    value - 0.5
-}
+/* # insolation */
 
 fn vector_elevation(point: &Coordinate<f64>, elevation: f64) -> Vector3<f64> {
     let cpoint = point.centre();
     Vector3::new(cpoint.x, cpoint.y, elevation)
 }
 
-/* +daily */
+/* ## daily */
+
+fn insolation_curve(value: f64) -> f64 {
+    1.8 * value - 3.2
+}
 
 fn insolation_calculate_sun(point: &Coordinate<f64>, sun: &Coordinate<f64>) -> f64 {
     //turns out, the influence of both elevation and slope is negligable
@@ -50,25 +42,29 @@ fn insolation_calculate_point(point: &Coordinate<f64>) -> f64 {
     )
 }
 
-pub fn insolation_calculate(resolution: usize) -> Brane {
-    //! calculate insolation – the amount of radiation reaching the surface over a single day
-
+/// calculate insolation – the amount of radiation reaching the surface over a single day
+pub fn insolation_calculate(resolution: usize) -> Brane<f64> {
     info!("calculating insolation map");
 
-    let mut brane = new("insolation".to_string(), resolution);
-    brane.engrid(
-        brane
-            .into_par_iter()
+    let mut brane = Brane::from(
+        Brane::<f64>::vec_par_iter(resolution)
             .map(|point| insolation_calculate_point(&point))
-            .collect(),
+            .collect::<Vec<f64>>(),
     );
+    brane.variable = "insolation".to_string();
     brane
 }
 
-/* +watchly */
+/* ## watchly */
+
+const MAX_WATCH: usize = 16;
 
 fn encircle(watch: usize) -> f64 {
     TAU * watch as f64 / (1.0 * MAX_WATCH as f64)
+}
+
+fn insolation_watch_curve(value: f64) -> f64 {
+    value - 0.5
 }
 
 fn insolation_watch_calculate_sun(
@@ -98,50 +94,50 @@ fn insolation_watch_calculate_point(point: &Coordinate<f64>, watch: usize) -> f6
     )
 }
 
-pub fn insolation_watch_calculate(resolution: usize, watch: usize) -> Brane {
-    //! calculate insolation – the amount of radiation reaching the surface over a single watch
-
+/// calculate insolation – the amount of radiation reaching the surface over a single watch
+pub fn insolation_watch_calculate(resolution: usize, watch: usize) -> Brane<f64> {
     info!("calculating insolation map at watch {}", watch);
 
-    let mut brane = new(format!("insolation-{}", watch), resolution);
-    brane.engrid(
-        brane
-            .into_par_iter()
+    let mut brane = Brane::from(
+        Brane::<f64>::vec_par_iter(resolution)
             .map(|point| insolation_watch_calculate_point(&point, watch))
-            .collect(),
+            .collect::<Vec<f64>>(),
     );
+    brane.variable = format!("insolation-{}", watch);
     brane
 }
 
-/* heat */
+/* # heat */
 
-/* +absorbtion */
+/* ## absorbtion */
 
 fn heat_absorbtion_calculate_point(
     point: &Coordinate<f64>,
-    insolation: &Brane,
-    albedo: &Brane,
+    insolation: &Brane<f64>,
+    albedo: &Brane<f64>,
 ) -> f64 {
     // this should include heat capacitance (ciepło właściwe)
-    insolation.find_value(&point) * (1.0 - albedo.find_value(&point))
+    insolation.get(&point) * (1.0 - albedo.get(&point))
 }
 
-pub fn heat_absorbtion_calculate(resolution: usize, insolation: &Brane, albedo: &Brane) -> Brane {
-    //! calculate the amount of heat absorbed by the surface
-
+/// calculate the amount of heat absorbed by the surface
+pub fn heat_absorbtion_calculate(
+    resolution: usize,
+    insolation: &Brane<f64>,
+    albedo: &Brane<f64>,
+) -> Brane<f64> {
     info!("calculating heat absorbtion");
 
-    let mut brane = new("heat-absorbed".to_string(), resolution);
-    brane.engrid(
-        brane
-            .into_par_iter()
+    let mut brane = Brane::from(
+        Brane::<f64>::vec_par_iter(resolution)
             .map(|point| heat_absorbtion_calculate_point(&point, &insolation, &albedo))
-            .collect(),
+            .collect::<Vec<f64>>(),
     );
+    brane.variable = "heat-absorbed".to_string();
     brane
 }
 
-/* *diffusion */
+/* ## diffusion */
 
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum Medium {
@@ -159,17 +155,17 @@ fn viscosity(medium: Medium) -> f64 {
 fn heat_diffusion_calculate_point(
     point: &Coordinate<f64>,
     medium: Medium,
-    heat: &Brane,
-    surface: &Brane,
+    heat: &Brane<f64>,
+    surface: &Brane<u8>,
 ) -> f64 {
-    let current = heat.find_value(&point);
-    if medium == Medium::Air || decode(surface.find_value_exact(&point)) == Surface::Water {
-        let mut ambit = heat.find(&point).ambit(heat.resolution as i32);
+    let current = heat.get(&point);
+    if medium == Medium::Air || decode(surface.get(&point)) == Surface::Water {
+        let mut ambit = heat.ambit(&point);
         // the folllowing line assumes that heat and surface have the same resolution
         if medium == Medium::Ocean {
             ambit = ambit
                 .into_iter()
-                .filter(|gon| decode(surface.get_exact(&gon)) == Surface::Water)
+                .filter(|gon| decode(surface.get(&gon)) == Surface::Water)
                 .collect();
         }
         let len = ambit.len() as f64;
@@ -184,42 +180,34 @@ fn heat_diffusion_calculate_point(
     }
 }
 
+/// calculate heat diffusion through a medium
 pub fn heat_diffusion_calculate(
     resolution: usize,
     medium: Medium,
-    absorbtion: &Brane,
-    surface: &Brane,
-) -> Brane {
-    //! calculate heat diffusion through a medium
-
+    absorbtion: &Brane<f64>,
+    surface: &Brane<u8>,
+) -> Brane<f64> {
     info!("calculating heat diffusion through {:?}", medium);
 
-    let mut brane = new("heat-diffused".to_string(), resolution);
-    brane.engrid(
-        absorbtion
-            .into_iter()
-            .map(|point| absorbtion.get(&point))
-            .collect(),
-    );
+    let mut brane = absorbtion.clone();
     for _ in 0..2 * resolution {
         // this could probalby be sped up, if was done outside of a brane environment, on pure Vecs
-        brane.engrid(
-            brane
-                .into_par_iter()
+        brane = Brane::from(
+            Brane::<f64>::vec_par_iter(resolution)
                 .map(|point| heat_diffusion_calculate_point(&point, medium, &brane, &surface))
-                .collect(),
+                .collect::<Vec<f64>>(),
         );
     }
+    brane.variable = "heat-diffused".to_string();
     brane
 }
 
+/// calculate heat diffusion through all mediums
 pub fn heat_diffusion_calculate_all(
     resolution: usize,
-    absorbtion: &Brane,
-    surface: &Brane,
-) -> Brane {
-    //! calculate heat diffusion through all mediums
-
+    absorbtion: &Brane<f64>,
+    surface: &Brane<u8>,
+) -> Brane<f64> {
     info!("calculating heat diffusion");
 
     let brane = heat_diffusion_calculate(resolution, Medium::Ocean, &absorbtion, &surface);
