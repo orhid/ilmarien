@@ -98,7 +98,7 @@ impl<T: Copy> Renderable<T> for Brane<T> {
             };
             terraces
                 .entry(ink.paint(self.read(&point)))
-                .or_insert(VecDeque::<MultiPolygon<f64>>::new())
+                .or_insert_with(VecDeque::<MultiPolygon<f64>>::new)
                 .push_back(MultiPolygon::from(vec![Polygon::new(
                     LineString::from((point + tiling).corners()),
                     vec![],

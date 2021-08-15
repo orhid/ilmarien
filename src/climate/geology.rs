@@ -1,4 +1,5 @@
 use crate::imaging::cartography::Brane;
+use crate::util::consants::*;
 use geo_types::Coordinate;
 use log::info;
 use noise::{NoiseFn, OpenSimplex, Seedable};
@@ -27,34 +28,33 @@ fn elevation_generate_point(
     noise: &OpenSimplex,
     curve: &Spline<f64, f64>,
 ) -> f64 {
-    let detail: i32 = 12;
     let x: f64 = TAU * point.x;
     let y: f64 = TAU * point.y;
 
-    let amplifactor: f64 = 1.44;
-    let amplitude: f64 = (0..detail)
-        .map(|ampli| amplifactor.powi(-ampli))
+    let amplitude: f64 = (0..GEO_DETAIL)
+        .map(|amp| AMP_FACTOR.powi(-amp))
         .sum::<f64>();
 
-    let value = (0..detail)
+    let value = (0..GEO_DETAIL)
         .map(|level| {
-            let freq = 0.84 * 2.0_f64.powi(level); // the first number controls scale
-            let ampli = amplifactor.powi(-level);
-            let factor: f64 = 3.0_f64.sqrt() / 2.0; //this should lessen the distortion
-
-            ampli
+            let freq = GEO_SCALE * 2.0_f64.powi(level);
+            AMP_FACTOR.powi(-level)
                 * noise.get([
                     freq * x.cos(),
                     freq * x.sin(),
-                    freq * factor * y.cos(),
-                    freq * factor * y.sin(),
+                    freq * DST_FACTOR * y.cos(),
+                    freq * DST_FACTOR * y.sin(),
                 ])
         })
         .sum::<f64>();
-    curve.clamped_sample(1.68 * value / amplitude).unwrap()
+    curve
+        .clamped_sample(BLW_FACTOR * value / amplitude)
+        .unwrap()
 }
 
 /// generate an elevation model from Perlin noise
+/// the values will range from 0.0 to 1.0
+/// they correspond to the difference between 0 and 13824 meters
 pub fn elevation_generate(resolution: usize, seed: u32) -> Brane<f64> {
     info!("generating elevation model");
     let noise = OpenSimplex::new().set_seed(seed);

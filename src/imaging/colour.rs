@@ -1,3 +1,5 @@
+use crate::util::constants::*;
+
 /* # colour spaces */
 
 pub struct HSB {
@@ -9,11 +11,7 @@ pub struct HSB {
 
 impl HSB {
     fn new(hue: f64, sat: f64, brt: f64) -> Self {
-        HSB {
-            hue: hue,
-            sat: sat,
-            brt: brt,
-        }
+        HSB { hue, sat, brt }
     }
 
     fn paint(&self) -> String {
@@ -29,16 +27,12 @@ impl From<&RGB> for HSB {
         HSB::new(
             if chroma == 0.0 {
                 0.0
+            } else if value == rgb.r {
+                (rgb.g - rgb.b) as f64 / (6.0 * chroma) + if rgb.g <= rgb.b { 0.0 } else { 1.0 }
+            } else if value == rgb.g {
+                (rgb.b - rgb.r) as f64 / (6.0 * chroma) + 1.0 / 3.0
             } else {
-                if value == rgb.r {
-                    (rgb.g - rgb.b) as f64 / (6.0 * chroma) + if rgb.g <= rgb.b { 0.0 } else { 1.0 }
-                } else {
-                    if value == rgb.g {
-                        (rgb.b - rgb.r) as f64 / (6.0 * chroma) + 1.0 / 3.0
-                    } else {
-                        (rgb.r - rgb.g) as f64 / (6.0 * chroma) + 2.0 / 3.0
-                    }
-                }
+                (rgb.r - rgb.g) as f64 / (6.0 * chroma) + 2.0 / 3.0
             },
             if value == 0 {
                 0.0
@@ -58,7 +52,7 @@ pub struct RGB {
 
 impl RGB {
     fn new(r: u8, g: u8, b: u8) -> Self {
-        RGB { r: r, g: g, b: b }
+        RGB { r, g, b }
     }
 
     fn paint(&self) -> String {
@@ -96,22 +90,34 @@ pub trait Ink<T> {
 /// will vary the brightness at constant hue and saturation
 pub struct HueInk {
     hue: f64,
-    sat: f64,
+    brt: f64,
 }
 
 impl HueInk {
-    pub fn new(hue: f64, sat: f64) -> Self {
-        HueInk { hue: hue, sat: sat }
+    pub fn new(hue: f64, brt: f64) -> Self {
+        HueInk { hue, brt }
     }
 }
 
 impl Ink<f64> for HueInk {
     fn paint(&self, sample: f64) -> String {
-        HSB::new(self.hue, self.sat, sample).paint()
+        HSB::new(self.hue, sample, self.brt).paint()
     }
 }
 
 /* ## geographic inks */
+
+pub struct TempInk;
+
+impl Ink<f64> for TempInk {
+    fn paint(&self, sample: f64) -> String {
+        if sample > MID_TEMP {
+            HueInk::new(0.02, 0.94).paint((sample - MID_TEMP) / 48.0)
+        } else {
+            HueInk::new(0.54, 0.94).paint((MID_TEMP - sample) / 12.0)
+        }
+    }
+}
 
 pub struct ElevationInk;
 

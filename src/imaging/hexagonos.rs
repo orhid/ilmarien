@@ -227,20 +227,16 @@ impl Tileable for Coordinate<i32> {
             } else {
                 Tile::R
             }
-        } else {
-            if 2 * self.x + self.y - 2 * modulo <= 0 {
-                if self.x - self.y <= 0 {
-                    Tile::R
-                } else {
-                    Tile::B
-                }
+        } else if 2 * self.x + self.y - 2 * modulo <= 0 {
+            if self.x - self.y <= 0 {
+                Tile::R
             } else {
-                if self.x + 2 * self.y - 2 * modulo < 0 {
-                    Tile::B
-                } else {
-                    Tile::G
-                }
+                Tile::B
             }
+        } else if self.x + 2 * self.y - 2 * modulo < 0 {
+            Tile::B
+        } else {
+            Tile::G
         }
     }
 }

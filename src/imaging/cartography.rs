@@ -46,7 +46,7 @@ pub struct Brane<T>
 where
     T: Copy,
 {
-    grid: Vec<T>,
+    pub grid: Vec<T>,
     pub resolution: usize,
     pub variable: String,
 }
@@ -80,6 +80,15 @@ impl<T: Copy> Brane<T> {
     /// return a point in the unit square, regardless of resolution
     fn cast(&self, point: &Coordinate<i32>) -> Coordinate<f64> {
         cast(point, self.resolution)
+    }
+
+    pub fn cell_count(&self) -> usize {
+        3 * self.resolution * (self.resolution - 1) + 1
+    }
+
+    /// returns an area of a single cell as a fraction of the entire brane
+    pub fn cell_area(&self) -> f64 {
+        1.0 / self.cell_count() as f64
     }
 
     /// returns neighbouring points
@@ -158,21 +167,19 @@ impl<T: Zero + Copy> Brane<T> {
         info!("initialising empty brane at resolution {}", resolution);
         Brane {
             grid: vec![T::zero(); resolution.pow(2)],
-            resolution: resolution,
+            resolution,
             variable: "zeros".to_string(),
         }
     }
 }
 
-pub fn find_resolution(variable: &String) -> usize {
+pub fn find_resolution(variable: &str) -> usize {
     let mut files = Vec::new();
     if let Ok(entries) = fs::read_dir("static") {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                if let Ok(name) = entry.file_name().into_string() {
-                    if name.starts_with(variable) {
-                        files.push(name);
-                    }
+        for entry in entries.flatten() {
+            if let Ok(name) = entry.file_name().into_string() {
+                if name.starts_with(variable) {
+                    files.push(name);
                 }
             }
         }
@@ -185,7 +192,7 @@ pub fn find_resolution(variable: &String) -> usize {
                 .expect("variable contains something weird")
         })
         .collect::<Vec<usize>>();
-    resolutions.sort();
+    resolutions.sort_unstable();
     resolutions
         .pop()
         .expect("found no brane for specified variable")
@@ -208,7 +215,7 @@ impl Brane<u8> {
 
     /// load brane with a given name from a .tif file
     pub fn load(variable: String) -> Self {
-        let mut varextended = variable.clone();
+        let mut varextended = variable;
         varextended.push_str("-u8");
         let path_name = format!(
             "static/{}-{}.tif",
@@ -243,7 +250,7 @@ impl Brane<u16> {
 
     /// load brane with a given name from a .tif file
     pub fn load(variable: String) -> Self {
-        let mut varextended = variable.clone();
+        let mut varextended = variable;
         varextended.push_str("-u16");
         let path_name = format!(
             "static/{}-{}.tif",
@@ -282,7 +289,7 @@ impl From<&Brane<f64>> for Brane<u16> {
                 .into_par_iter()
                 .map(|value| (value * 2.0_f64.powi(16) - 1.0) as u16)
                 .collect(),
-            resolution: brane.resolution.clone(),
+            resolution: brane.resolution,
             variable: brane.variable.clone(),
         }
     }
@@ -297,7 +304,7 @@ impl From<&Brane<f64>> for Brane<u8> {
                 .into_par_iter()
                 .map(|value| (value * 2.0_f64.powi(8) - 1.0) as u8)
                 .collect(),
-            resolution: brane.resolution.clone(),
+            resolution: brane.resolution,
             variable: brane.variable.clone(),
         }
     }
@@ -312,7 +319,7 @@ impl From<&Brane<u16>> for Brane<f64> {
                 .into_par_iter()
                 .map(|value| value as f64 / (2.0_f64.powi(16) - 1.0))
                 .collect(),
-            resolution: brane.resolution.clone(),
+            resolution: brane.resolution,
             variable: brane.variable.clone(),
         }
     }
@@ -327,7 +334,7 @@ impl From<&Brane<u8>> for Brane<f64> {
                 .into_par_iter()
                 .map(|value| value as f64 / (2.0_f64.powi(8) - 1.0))
                 .collect(),
-            resolution: brane.resolution.clone(),
+            resolution: brane.resolution,
             variable: brane.variable.clone(),
         }
     }
@@ -340,7 +347,7 @@ impl<T: Copy> From<Vec<T>> for Brane<T> {
         if resolution.pow(2) == square {
             Brane {
                 grid: vector,
-                resolution: resolution,
+                resolution,
                 variable: "from-vec".to_string(),
             }
         } else {

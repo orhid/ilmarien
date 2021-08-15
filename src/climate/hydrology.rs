@@ -1,14 +1,17 @@
 use crate::imaging::cartography::Brane;
+use crate::util::constants::*;
 use geo_types::Coordinate;
 use log::info;
 use rayon::prelude::*;
+
+const INIT_OCEAN_LEVEL: f64 = 0.25;
 
 /* initialise */
 
 fn ocean_initialise_point(point: &Coordinate<f64>, elevation: &Brane<f64>) -> f64 {
     let pelev = elevation.get(&point);
-    if pelev < 0.25 {
-        0.25 - pelev
+    if pelev < INIT_OCEAN_LEVEL {
+        INIT_OCEAN_LEVEL - pelev
     } else {
         0.0
     }
@@ -26,3 +29,25 @@ pub fn ocean_initialise(resolution: usize, elevation: &Brane<f64>) -> Brane<f64>
     brane.variable = "ocean".to_string();
     brane
 }
+
+/* rainfall */
+/*
+/// simulate the amount of rainfall reaching the surface
+pub fn rainfall_simulate(
+    resolution: usize,
+    elevation: &Brane<f64>,
+    ocean: &mut Brane<f64>,
+    heat: &Brane<f64>,
+) -> Brane<u8> {
+    info!("simulating rainfall");
+
+    // this is all wrong
+    let mut brane = Brane::from(
+        Brane::<u8>::vec_par_iter(resolution)
+            .map(|point| rainfall_calculate_point(&point, &evaporation))
+            .collect::<Vec<u8>>(),
+    );
+    brane.variable = "rainfall".to_string();
+    brane
+}
+*/

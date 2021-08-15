@@ -53,6 +53,10 @@ pub fn surface_calculate(resolution: usize, ocean: &Brane<f64>) -> Brane<u8> {
     brane
 }
 
+/*
+
+// this may become useful later
+
 /* albedo */
 
 fn albedo_calculate_point(point: &Coordinate<f64>, surface: &Brane<u8>) -> f64 {
@@ -76,3 +80,30 @@ pub fn albedo_calculate(resolution: usize, surface: &Brane<u8>) -> Brane<f64> {
     brane.variable = "albedo".to_string();
     brane
 }
+
+/* capacitance */
+
+fn capacitance_calculate_point(point: &Coordinate<f64>, surface: &Brane<u8>) -> f64 {
+    match decode(surface.get(&point)) {
+        // heat capacitance in J*g^-1*K^-1
+        Surface::Water => 4.1813,
+        Surface::Ice => 2.05,
+        Surface::Snow => 2.05,
+        Surface::Stone => 0.79,
+    }
+}
+
+/// calculate surface albedo
+pub fn capacitance_calculate(resolution: usize, surface: &Brane<u8>) -> Brane<f64> {
+    info!("calculating surface albedo");
+
+    let mut brane = Brane::from(
+        Brane::<f64>::vec_par_iter(resolution)
+            .map(|point| capacitance_calculate_point(&point, &surface))
+            .collect::<Vec<f64>>(),
+    );
+    brane.variable = "capacitance".to_string();
+    brane
+}
+
+*/
