@@ -9,7 +9,9 @@ use crate::util::{
 use geo_types::Coordinate;
 use log::info;
 use nalgebra::Vector3;
+use petgraph::graph::{Graph, NodeIndex};
 use rayon::prelude::*;
+use std::collections::HashMap;
 
 /* # insolation */
 
@@ -50,16 +52,12 @@ pub fn insolation_calculate(resolution: usize) -> Brane<f64> {
 
 /* # temperature */
 
-fn temperature_initialise_point(point: &Coordinate<f64>, insolation: &Brane<f64>) -> f64 {
-    INIT_TEMP + SOL_POWER * insolation.get(&point)
-}
-
 /// initialise temperature to a given value in degrees Kelvin
 pub fn temperature_initialise(resolution: usize, insolation: &Brane<f64>) -> Brane<f64> {
     info!("initialising temperature");
     let mut brane = Brane::from(
         Brane::<f64>::vec_par_iter(resolution)
-            .map(|point| temperature_initialise_point(&point, &insolation))
+            .map(|point| INIT_TEMP + SOL_POWER * insolation.get(&point))
             .collect::<Vec<f64>>(),
     );
     brane.variable = "temperature".to_string();
@@ -96,6 +94,66 @@ pub fn temperature_calculate(
     let mut temperature = temperature_initialise(resolution, &insolation);
     temperature_diffuse(&mut temperature, &surface);
     temperature
+}
+
+/* # pressure */
+
+pub fn pressure_calculate(resolution: usize, temperature: &Brane<f64>) -> Brane<f64> {
+    info!("calculating pressure");
+    let mut brane = Brane::from(
+        Brane::<f64>::vec_par_iter(resolution)
+            .map(|point| INIT_PRES + GAS_CONST / temperature.get(&point))
+            .collect::<Vec<f64>>(),
+    );
+    brane.variable = "pressure".to_string();
+    brane
+}
+
+pub fn pressure_elevation(base: f64, elevation: f64, temperature: f64) -> f64 {
+    base * (-LAPSE_CONST * elevation / temperature).exp()
+}
+
+/*
+fn pressure_gradient_point(
+    point: &Coordinate<f64>,
+    pressure: &Brane<f64>,
+    temperature: &Brane<f64>,
+    elevation: &Brane<f64>,
+) -> (Coordinate<f64>, Coordinate<f64>, f64) {
+    (point.clone(), point.clone(), 1.0)
+}
+pub fn pressure_gradient(
+    pressure: &Brane<f64>,
+    temperature: &Brane<f64>,
+    elevation: &Brane<f64>,
+) -> Graph<Coordinate<f64>, f64> {
+    Graph::<Coordinate<f64>, f64>::from_edges(
+        &pressure
+            .into_par_iter()
+            .map(|point| pressure_gradient_point(&point, &pressure, &temperature, &elevation))
+            .filter(|edge| edge.2 > 0.0)
+            .collect::<Vec<(Coordinate<f64>, Coordinate<f64>, f64)>>(),
+    )
+}
+*/
+
+pub fn pressure_gradient(
+    pressure: &Brane<f64>,
+    temperature: &Brane<f64>,
+    elevation: &Brane<f64>,
+) -> Graph<Coordinate<i32>, f64> {
+    let mut graph = Graph::<Coordinate<i32>, f64>::new();
+    let mut hashmap = HashMap::<Coordinate<i32>, NodeIndex>::new();
+    for point in pressure.exact_iter() {
+        let here = graph.add_node(point);
+        hashmap.insert(point, here);
+    }
+    for point in pressure.exact_iter() {
+        let point_pres = pressure.read(&point);
+        let ambit = pressure.exact_ambit(&point);
+        let ambit_pres = ambit.iter().map(|nbr| pressure.read(&nbr));
+    }
+    graph
 }
 
 /*
@@ -152,3 +210,15 @@ pub fn temperature_radiate(temperature: &mut Brane<f64>, capacitance: &Brane<f64
 }
 
 */
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use float_eq::assert_float_eq;
+    const EPSILON: f64 = 0.0001;
+
+    #[test]
+    fn pressure_lapse() {
+        assert_float_eq!(pressure_elevation(1.0, 1.0, 285.0), 0.2492, abs <= EPSILON);
+    }
+}

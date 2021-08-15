@@ -4,8 +4,6 @@ use geo_types::Coordinate;
 use log::info;
 use rayon::prelude::*;
 
-const INIT_OCEAN_LEVEL: f64 = 0.25;
-
 /* initialise */
 
 fn ocean_initialise_point(point: &Coordinate<f64>, elevation: &Brane<f64>) -> f64 {
@@ -31,6 +29,7 @@ pub fn ocean_initialise(resolution: usize, elevation: &Brane<f64>) -> Brane<f64>
 }
 
 /* rainfall */
+
 /*
 /// simulate the amount of rainfall reaching the surface
 pub fn rainfall_simulate(

@@ -22,5 +22,10 @@ pub const SOL_POWER: f64 = 324.0; // power of solar radiation
 pub const INIT_TEMP: f64 = -358.0; // initial world temperature
 pub const MID_TEMP: f64 = 273.0; // initial world temperature
 
+pub const INIT_PRES: f64 = 0.5; // initial surface pressure
+pub const GAS_CONST: f64 = 144.0; // ideal gas constant
+pub const LAPSE_CONST: f64 = 396.0; // pressure lapse
+
 /* ## hydrology */
+
 pub const INIT_OCEAN_LEVEL: f64 = 0.25;

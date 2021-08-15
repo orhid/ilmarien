@@ -19,7 +19,8 @@ fn enravel(j: usize, resolution: usize) -> Coordinate<i32> {
 
 /// change a lattice point to a line point
 fn unravel(point: &Coordinate<i32>, resolution: usize) -> usize {
-    (point.x * resolution as i32 + point.y) as usize
+    (point.x.rem_euclid(resolution as i32) * resolution as i32
+        + point.y.rem_euclid(resolution as i32)) as usize
 }
 
 /// find a grid point closest to given coordinate
@@ -98,6 +99,11 @@ impl<T: Copy> Brane<T> {
             .into_iter()
             .map(|gon| self.cast(&gon))
             .collect::<Vec<Coordinate<f64>>>()
+    }
+
+    /// returns neighbouring points
+    pub fn exact_ambit(&self, point: &Coordinate<i32>) -> Vec<Coordinate<i32>> {
+        point.ambit(self.resolution as i32)
     }
 
     /// produces an iterator over all coordinates in a brane of given resolution

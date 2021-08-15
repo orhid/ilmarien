@@ -1,4 +1,4 @@
-use ilmarien::climate::{geology as glg, hydrology as hdr, radiation as rad, surface as srf};
+use crate::climate::{geology as glg, hydrology as hdr, radiation as rad, surface as srf};
 //use ilmarien::imaging::{colour as clr, render::Renderable};
 
 #[allow(dead_code)]
@@ -15,10 +15,11 @@ fn full_simulation(resolution: usize, seed: u32) {
     let surface = srf::surface_calculate(resolution, &ocean);
 
     // calculate temperature
-    let insolation = rad::insolation_calculate(resolution);
+    let insolation = rad::insolation_calculate(resolution / 3);
     let temperature = rad::temperature_calculate(resolution / 3, &insolation, &surface);
 
     // TODO: calculate surface pressure
+    let pressure = rad::pressure_calculate(resolution / 3, &temperature)
 
     // TODO: simulate rainfall
     // evaporation should subtract from the ocean map

@@ -20,6 +20,7 @@ geo = "0.18.0"
 geo-booleanop = { git = "https://github.com/21re/rust-geo-booleanop" }
 geo-types = "0.7.2"
 geo-svg = "0.5.0"
+petgraph = "0.6.0"
 noise = "0.7"
 splines = "4.0.0"
 nalgebra = "0.28.0"

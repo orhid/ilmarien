@@ -1,5 +1,5 @@
 use crate::imaging::cartography::Brane;
-use crate::util::consants::*;
+use crate::util::constants::*;
 use geo_types::Coordinate;
 use log::info;
 use noise::{NoiseFn, OpenSimplex, Seedable};
