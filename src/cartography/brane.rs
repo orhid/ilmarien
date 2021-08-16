@@ -1,5 +1,5 @@
-use crate::imaging::hexagonos::{Gon, PreGon};
-use geo_types::Coordinate;
+use crate::cartography::hexagonos::{Gon, PreGon};
+use geo::Coordinate;
 use log::{error, info};
 use num_traits::identities::Zero;
 use rayon::prelude::*;
@@ -83,6 +83,7 @@ impl<T: Copy> Brane<T> {
         cast(point, self.resolution)
     }
 
+    /*
     pub fn cell_count(&self) -> usize {
         3 * self.resolution * (self.resolution - 1) + 1
     }
@@ -91,6 +92,7 @@ impl<T: Copy> Brane<T> {
     pub fn cell_area(&self) -> f64 {
         1.0 / self.cell_count() as f64
     }
+    */
 
     /// returns neighbouring points
     pub fn ambit(&self, point: &Coordinate<f64>) -> Vec<Coordinate<f64>> {
@@ -179,7 +181,7 @@ impl<T: Zero + Copy> Brane<T> {
     }
 }
 
-pub fn find_resolution(variable: &str) -> usize {
+fn find_resolution(variable: &str) -> usize {
     let mut files = Vec::new();
     if let Ok(entries) = fs::read_dir("static") {
         for entry in entries.flatten() {

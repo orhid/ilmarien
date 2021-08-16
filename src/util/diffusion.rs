@@ -1,6 +1,6 @@
+use crate::cartography::brane::Brane;
 use crate::climate::surface::{decode, Surface};
-use crate::imaging::cartography::Brane;
-use geo_types::Coordinate;
+use geo::Coordinate;
 
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum Medium {

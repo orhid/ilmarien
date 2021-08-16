@@ -12,11 +12,12 @@ fn full_simulation(resolution: usize, seed: u32) {
     let ocean = hdr::ocean_initialise(resolution, &elevation);
 
     //  calculate the surface types and their associated properties
-    let surface = srf::surface_calculate(resolution, &ocean);
+    let surface_type = srf::surface_type_calculate(resolution, &ocean);
+    let surface_level = srf::surface_level_calculate(resolution, &elevation, &ocean);
 
     // calculate temperature
     let insolation = rad::insolation_calculate(resolution / 3);
-    let temperature = rad::temperature_calculate(resolution / 3, &insolation, &surface);
+    let temperature = rad::temperature_calculate(resolution / 3, &insolation, &surface_type);
 
     // TODO: calculate surface pressure
     let pressure = rad::pressure_calculate(resolution / 3, &temperature)
