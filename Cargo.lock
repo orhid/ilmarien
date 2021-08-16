@@ -372,11 +372,11 @@ dependencies = [
  "geo",
  "geo-booleanop",
  "geo-svg",
- "geo-types",
  "log",
  "nalgebra",
  "noise",
  "num-traits",
+ "ordered-float",
  "petgraph",
  "pretty_env_logger",
  "rayon",
@@ -594,6 +594,15 @@ checksum = "05499f3756671c15885fee9034446956fff3f243d6077b91e5767df161f766b3"
 dependencies = [
  "hermit-abi",
  "libc",
+]
+
+[[package]]
+name = "ordered-float"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "039f02eb0f69271f26abe3202189275d7aa2258b903cb0281b5de710a2570ff3"
+dependencies = [
+ "num-traits",
 ]
 
 [[package]]

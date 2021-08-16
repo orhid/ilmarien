@@ -1,5 +1,5 @@
-use crate::imaging::cartography::Brane;
-use geo_types::Coordinate;
+use crate::cartography::brane::Brane;
+use geo::Coordinate;
 use log::info;
 use rayon::prelude::*;
 
@@ -32,7 +32,7 @@ pub fn decode(value: u8) -> Surface {
     }
 }
 
-fn surface_calculate_point(point: &Coordinate<f64>, ocean: &Brane<f64>) -> Surface {
+fn surface_type_calculate_point(point: &Coordinate<f64>, ocean: &Brane<f64>) -> Surface {
     if ocean.get(&point) > 0.0 {
         Surface::Water
     } else {
@@ -41,15 +41,31 @@ fn surface_calculate_point(point: &Coordinate<f64>, ocean: &Brane<f64>) -> Surfa
 }
 
 /// calculate surface type
-pub fn surface_calculate(resolution: usize, ocean: &Brane<f64>) -> Brane<u8> {
+pub fn surface_type_calculate(resolution: usize, ocean: &Brane<f64>) -> Brane<u8> {
     info!("calculating surface type");
 
     let mut brane = Brane::from(
         Brane::<u8>::vec_par_iter(resolution)
-            .map(|point| encode(surface_calculate_point(&point, &ocean)))
+            .map(|point| encode(surface_type_calculate_point(&point, &ocean)))
             .collect::<Vec<u8>>(),
     );
-    brane.variable = "surface".to_string();
+    brane.variable = "surface-type".to_string();
+    brane
+}
+
+/// calculate surface level
+pub fn surface_level_calculate(
+    resolution: usize,
+    elevation: &Brane<f64>,
+    ocean: &Brane<f64>,
+) -> Brane<f64> {
+    info!("calculating surface level");
+    let mut brane = Brane::from(
+        Brane::<f64>::vec_par_iter(resolution)
+            .map(|point| elevation.get(&point) + ocean.get(&point))
+            .collect::<Vec<f64>>(),
+    );
+    brane.variable = "surface-level".to_string();
     brane
 }
 

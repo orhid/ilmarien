@@ -1,11 +1,13 @@
-use crate::imaging::{
-    cartography::Brane,
+use crate::cartography::{
+    brane::Brane,
     colour::Ink,
     hexagonos::{Gon, Tile, Tileable},
 };
-use geo::orient::{Direction, Orient};
+use geo::{
+    orient::{Direction, Orient},
+    {Coordinate, LineString, MultiPolygon, Polygon},
+};
 use geo_booleanop::boolean::BooleanOp;
-use geo_types::{Coordinate, LineString, MultiPolygon, Polygon};
 use log::info;
 use std::collections::{HashMap, VecDeque};
 use svg::node::element::Path;
