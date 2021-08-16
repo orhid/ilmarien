@@ -119,6 +119,19 @@ impl Ink<f64> for TempInk {
     }
 }
 
+pub struct PresInk;
+
+impl Ink<f64> for PresInk {
+    fn paint(&self, sample: f64) -> String {
+        let mid = 1.0;
+        if sample > mid {
+            HueInk::new(0.78, 0.94).paint((sample - mid) * 12.0)
+        } else {
+            HueInk::new(0.12, 0.94).paint((mid - sample) * 12.0)
+        }
+    }
+}
+
 pub struct ElevationInk;
 
 impl Ink<f64> for ElevationInk {

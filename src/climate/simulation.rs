@@ -20,7 +20,7 @@ fn full_simulation(resolution: usize, seed: u32) {
     let temperature = rad::temperature_calculate(resolution / 3, &insolation, &surface_type);
 
     // TODO: calculate surface pressure
-    let pressure = rad::pressure_calculate(resolution / 3, &temperature)
+    let pressure = rad::pressure_calculate(resolution / 3, &temperature);
 
     // TODO: simulate rainfall
     // evaporation should subtract from the ocean map

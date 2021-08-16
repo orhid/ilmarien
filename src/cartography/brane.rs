@@ -145,6 +145,30 @@ impl<T: Copy> Brane<T> {
     }
 }
 
+impl Brane<f64> {
+    pub fn stats(&self) {
+        println!("stats for {}", self.variable);
+        println!(
+            "min {}",
+            self.grid
+                .iter()
+                .min_by(|a, b| a.partial_cmp(b).unwrap())
+                .unwrap()
+        );
+        println!(
+            "med {}",
+            self.grid.iter().sum::<f64>() / self.grid.len() as f64
+        );
+        println!(
+            "max {}",
+            self.grid
+                .iter()
+                .max_by(|a, b| a.partial_cmp(b).unwrap())
+                .unwrap()
+        );
+    }
+}
+
 impl<T: Copy> IntoIterator for &Brane<T> {
     type Item = Coordinate<f64>;
     type IntoIter = std::vec::IntoIter<Self::Item>;

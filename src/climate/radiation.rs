@@ -101,34 +101,35 @@ pub fn temperature_calculate(
 
 /* # pressure */
 
-fn pressure_calculate_point(
-    point: &Coordinate<f64>,
-    temperature: &Brane<f64>,
-    surface_level: &Brane<f64>,
-) -> f64 {
-    let tmp = temperature.get(&point).recip();
-    tmp.mul_add(GAS_CONST, INIT_PRES) * (LAPSE_CONST * surface_level.get(&point) * tmp).exp()
+#[allow(dead_code)]
+fn pressure_elevation(pressure: f64, elevation: f64, temperature: f64) -> f64 {
+    pressure * (LAPSE_CONST * elevation * temperature.recip()).exp()
 }
 
-pub fn pressure_calculate(
-    resolution: usize,
-    temperature: &Brane<f64>,
-    surface_level: &Brane<f64>,
-) -> Brane<f64> {
-    info!("calculating pressure at surface level");
+/// calculate pressure at ocean level
+pub fn pressure_calculate(resolution: usize, temperature: &Brane<f64>) -> Brane<f64> {
+    info!("calculating pressure at ocean level");
     let mut brane = Brane::from(
         Brane::<f64>::vec_par_iter(resolution)
-            .map(|point| pressure_calculate_point(&point, &temperature, &surface_level))
+            .map(|point| {
+                temperature
+                    .get(&point)
+                    .recip()
+                    .mul_add(GAS_CONST, INIT_PRES)
+            })
             .collect::<Vec<f64>>(),
     );
     brane.variable = "pressure".to_string();
     brane
 }
 
+/// calculate pressure gradient for moisture transportation, including elevation changes
 pub fn pressure_gradient(
     pressure: &Brane<f64>,
     elevation: &Brane<f64>,
 ) -> Graph<Coordinate<i32>, f64> {
+    info!("calculating pressure gradient");
+
     let mut graph = Graph::<Coordinate<i32>, f64>::new();
     let mut nodes = HashMap::<Coordinate<i32>, NodeIndex>::new();
     for point in pressure.exact_iter() {

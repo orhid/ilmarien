@@ -1,5 +1,5 @@
+use ilmarien::cartography::{colour as clr, render::Renderable};
 use ilmarien::climate::{geology as glg, hydrology as hdr, radiation as rad, surface as srf};
-// use ilmarien::cartography::{colour as clr, render::Renderable};
 
 use log::info;
 use petgraph::dot::Dot;
@@ -10,8 +10,8 @@ fn test_short() {}
 
 #[allow(dead_code)]
 fn test_sim() {
-    let res: usize = 12;
-    let elevation = glg::elevation_generate(res, 1);
+    let res: usize = 216;
+    let elevation = glg::elevation_generate(res, 0);
     // elevation.render(clr::ElevationInk);
 
     let insolation = rad::insolation_calculate(res);
@@ -20,10 +20,16 @@ fn test_sim() {
     let surface_level = srf::surface_level_calculate(res, &elevation, &ocean);
 
     let temperature = rad::temperature_calculate(res / 3, &insolation, &surface_type);
-    let pressure = rad::pressure_calculate(res, &temperature, &surface_level);
+    // temperature.stats();
+    let pressure = rad::pressure_calculate(res / 3, &temperature);
 
-    let graph = rad::pressure_gradient(&pressure, &surface_level);
-    println!("{:?}", Dot::new(&graph));
+    let evaporation = hdr::evaporation_calculate(res, &surface_type, &temperature, &pressure);
+    // evaporation.stats();
+    // evaporation.render(clr::HueInk::new(0.84, 0.94));
+    //pressure.render(clr::PresInk);
+
+    //let pressure_graph = rad::pressure_gradient(&pressure, &surface_level);
+    //println!("{:?}", Dot::new(&graph));
 }
 
 fn main() {
