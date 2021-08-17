@@ -142,8 +142,7 @@ pub fn pressure_gradient(pressure: &Brane<f64>) -> (Graph<Coordinate<i32>, f64>,
             .unwrap();
         let dif = pressure.read(&point) - pressure.read(&minbr);
         if dif > 0.0 {
-            let weight = dif.recip().log10() * 0.1;
-            graph.add_edge(nodes[&point], nodes[&minbr], weight);
+            graph.add_edge(nodes[&point], nodes[&minbr], dif.recip().log10() * 0.1);
         } else {
             roots.push(nodes[&point]);
         }
