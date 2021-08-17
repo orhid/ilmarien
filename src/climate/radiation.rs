@@ -5,7 +5,7 @@ use crate::{
     },
     util::{
         constants::*,
-        diffusion::{diffusion_calculate_point, Medium},
+        diffusion::{diffusion_medium, Medium},
     },
 };
 use geo::Coordinate;
@@ -14,7 +14,7 @@ use nalgebra::Vector3;
 use ordered_float::OrderedFloat;
 use petgraph::graph::{Graph, NodeIndex};
 use rayon::prelude::*;
-use std::{cmp::max, collections::HashMap};
+use std::collections::HashMap;
 
 /* # insolation */
 
@@ -83,7 +83,7 @@ pub fn temperature_diffuse(temperature: &mut Brane<f64>, surface: &Brane<u8>) {
     for j in 0..temperature.resolution * 18 {
         temperature.grid = temperature
             .into_par_iter()
-            .map(|point| diffusion_calculate_point(&point, choose(j), &temperature, &surface))
+            .map(|point| diffusion_medium(&point, choose(j), &temperature, &surface))
             .collect::<Vec<f64>>();
     }
 }
@@ -124,14 +124,12 @@ pub fn pressure_calculate(resolution: usize, temperature: &Brane<f64>) -> Brane<
 }
 
 /// calculate pressure gradient for moisture transportation, including elevation changes
-pub fn pressure_gradient(
-    pressure: &Brane<f64>,
-    elevation: &Brane<f64>,
-) -> Graph<Coordinate<i32>, f64> {
+pub fn pressure_gradient(pressure: &Brane<f64>) -> (Graph<Coordinate<i32>, f64>, Vec<NodeIndex>) {
     info!("calculating pressure gradient");
 
     let mut graph = Graph::<Coordinate<i32>, f64>::new();
     let mut nodes = HashMap::<Coordinate<i32>, NodeIndex>::new();
+    let mut roots = Vec::<NodeIndex>::new();
     for point in pressure.exact_iter() {
         let here = graph.add_node(point);
         nodes.insert(point, here);
@@ -142,22 +140,15 @@ pub fn pressure_gradient(
             .iter()
             .min_by_key(|nbr| OrderedFloat(pressure.read(&nbr)))
             .unwrap();
-        let weight = (pressure.read(&point) - pressure.read(&minbr))
-            .recip()
-            .log10()
-            * 0.1
-            + f64::from(max(
-                OrderedFloat(elevation.read(&minbr) - elevation.read(&point)),
-                OrderedFloat(0.0),
-            ))
-            .powi(2)
-                * 72.0;
-        if weight > 0.0 {
+        let dif = pressure.read(&point) - pressure.read(&minbr);
+        if dif > 0.0 {
+            let weight = dif.recip().log10() * 0.1;
             graph.add_edge(nodes[&point], nodes[&minbr], weight);
+        } else {
+            roots.push(nodes[&point]);
         }
-        // else store a root node
     }
-    graph
+    (graph, roots)
 }
 
 /*

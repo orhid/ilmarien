@@ -8,7 +8,7 @@ pub enum Medium {
     Ocean,
 }
 
-pub fn diffusion_calculate_point(
+pub fn diffusion_medium(
     point: &Coordinate<f64>,
     medium: Medium,
     fluid: &Brane<f64>,
@@ -28,6 +28,21 @@ pub fn diffusion_calculate_point(
         } else {
             fluid.get(&point)
         }
+    } else {
+        fluid.get(&point)
+    }
+}
+
+pub fn diffusion_level(point: &Coordinate<f64>, fluid: &Brane<f64>, level: &Brane<f64>) -> f64 {
+    let herelev = level.get(&point);
+    let mut ambit = fluid.ambit(&point);
+    ambit = ambit
+        .into_iter()
+        .filter(|gon| (level.get(&gon) - herelev).abs() < 0.032)
+        .collect();
+    let len = ambit.len() as f64;
+    if len > 0.0 {
+        ambit.into_iter().map(|gon| fluid.get(&gon)).sum::<f64>() / len
     } else {
         fluid.get(&point)
     }

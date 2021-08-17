@@ -1,9 +1,19 @@
 use crate::cartography::brane::Brane;
-use crate::climate::surface::{decode, Surface};
-use crate::util::constants::*;
+use crate::climate::{
+    radiation::pressure_gradient,
+    surface::{decode, Surface},
+};
+use crate::util::{constants::*, diffusion::diffusion_level};
 use geo::Coordinate;
 use log::info;
+use ordered_float::OrderedFloat as Orf;
+use petgraph::{
+    graph::{Graph, NodeIndex},
+    visit::EdgeRef,
+    Direction,
+};
 use rayon::prelude::*;
+use std::cmp::{max, min};
 
 /* # initialise */
 
@@ -72,23 +82,59 @@ pub fn evaporation_calculate(
     brane
 }
 
-/*
-/// simulate the amount of rainfall reaching the surface
-pub fn rainfall_simulate(
-    resolution: usize,
+fn rainfall_node(
+    target_level: f64,
+    node: NodeIndex,
+    gradient: &Graph<Coordinate<i32>, f64>,
+    evaporation: &Brane<f64>,
     elevation: &Brane<f64>,
-    ocean: &mut Brane<f64>,
-    heat: &Brane<f64>,
-) -> Brane<u8> {
-    info!("simulating rainfall");
-
-    // this is all wrong
-    let mut brane = Brane::from(
-        Brane::<u8>::vec_par_iter(resolution)
-            .map(|point| rainfall_calculate_point(&point, &evaporation))
-            .collect::<Vec<u8>>(),
-    );
-    brane.variable = "rainfall".to_string();
-    brane
+    rainfall: &mut Brane<f64>,
+) -> f64 {
+    let point = &gradient[node];
+    let level = elevation.get(&evaporation.cast(&point));
+    let moisture = evaporation.read(&point)
+        + gradient
+            .edges_directed(node, Direction::Incoming)
+            .map(|edge| {
+                rainfall_node(
+                    level,
+                    edge.source(),
+                    gradient,
+                    evaporation,
+                    elevation,
+                    rainfall,
+                )
+            })
+            .sum::<f64>();
+    let frac = moisture
+        * f64::from(min(
+            max(Orf(0.054), Orf(target_level - level) * 8.0),
+            Orf(1.0),
+        ));
+    rainfall.insert(&point, frac);
+    moisture - frac
 }
-*/
+
+/// calculate the amount of rainfall reaching the surface
+pub fn rainfall(
+    pressure: &Brane<f64>,
+    evaporation: &Brane<f64>,
+    elevation: &Brane<f64>,
+) -> Brane<f64> {
+    info!("calculating rainfall");
+
+    let (gradient, roots) = pressure_gradient(pressure);
+    let mut rainfall = Brane::<f64>::zeros(evaporation.resolution);
+    for node in roots {
+        rainfall_node(0.0, node, &gradient, evaporation, elevation, &mut rainfall);
+    }
+
+    for _ in 0..rainfall.resolution / 12 {
+        rainfall.grid = rainfall
+            .into_par_iter()
+            .map(|point| diffusion_level(&point, &rainfall, &elevation))
+            .collect::<Vec<f64>>();
+    }
+    rainfall.variable = "rainfall".to_string();
+    rainfall
+}

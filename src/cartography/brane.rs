@@ -58,6 +58,10 @@ impl<T: Copy> Brane<T> {
         self.grid[self.unravel(&point)]
     }
 
+    pub fn insert(&mut self, point: &Coordinate<i32>, value: T) {
+        self.grid[unravel(&point, self.resolution)] = value;
+    }
+
     /// get a value nearest to given coordinate
     pub fn get(&self, point: &Coordinate<f64>) -> T {
         self.read(&self.find(point))
@@ -79,20 +83,9 @@ impl<T: Copy> Brane<T> {
     }
 
     /// return a point in the unit square, regardless of resolution
-    fn cast(&self, point: &Coordinate<i32>) -> Coordinate<f64> {
+    pub fn cast(&self, point: &Coordinate<i32>) -> Coordinate<f64> {
         cast(point, self.resolution)
     }
-
-    /*
-    pub fn cell_count(&self) -> usize {
-        3 * self.resolution * (self.resolution - 1) + 1
-    }
-
-    /// returns an area of a single cell as a fraction of the entire brane
-    pub fn cell_area(&self) -> f64 {
-        1.0 / self.cell_count() as f64
-    }
-    */
 
     /// returns neighbouring points
     pub fn ambit(&self, point: &Coordinate<f64>) -> Vec<Coordinate<f64>> {

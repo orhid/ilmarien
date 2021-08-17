@@ -19,19 +19,30 @@ fn full_simulation(resolution: usize, seed: u32) {
     let insolation = rad::insolation_calculate(resolution / 3);
     let temperature = rad::temperature_calculate(resolution / 3, &insolation, &surface_type);
 
-    // TODO: calculate surface pressure
+    // calculate surface pressure
     let pressure = rad::pressure_calculate(resolution / 3, &temperature);
 
-    // TODO: simulate rainfall
-    // evaporation should subtract from the ocean map
-    // a single droplet should travel for some time and then drop to the surface
-    // this should produce a rainfall map as a byproduct
-    // falling droplet should erode the surface until it stops moving
-    // then is should deposit its water into the ocean map
-    // water levels should be diffused one in a while
-    // this should include flooding low lying land
+    // simulate rainfall
+    // TODO: evaporation currently does not reduce ocean levels
+    let evaporation =
+        hdr::evaporation_calculate(resolution / 3, &surface_type, &temperature, &pressure);
+    let rainfall = hdr::rainfall(&pressure, &evaporation, &surface_level);
+
+    // TODO: simulate rivers
+    // this should include sedimant transportation
+    // as well as possibly changing ocean levels
+
+    // TODO: simulate vegetation
+    // rivers and rainfall combined with temperature can give some way to include vegetation
+    // which should enable a change in evaporation
+    // a couple of round of this could lead to more erosion than without vegetation
 
     // TODO: simulate glaciers
     // cut off some amount of heat
     // based on the rainfall map, simulate the accumulation of glaciers
+    // then simulate them being melted
+
+    // TODO: simulate seasons after the calamity, when the sun becomes unstable
+    // this will lead to more diverse climate zones and ultimately better vegetation
+    // this can also lead to food and resources maps and then to population and wealth maps
 }
