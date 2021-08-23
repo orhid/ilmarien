@@ -1,5 +1,7 @@
-use crate::cartography::brane::Brane;
-use geo::Coordinate;
+use crate::carto::{
+    brane::Brane,
+    datum::{DatumRe, Resolution},
+};
 use log::info;
 use rayon::prelude::*;
 
@@ -13,27 +15,31 @@ pub enum Surface {
     Stone,
 }
 
-fn encode(surface: Surface) -> u8 {
-    match surface {
-        Surface::Water => 0,
-        Surface::Ice => 1,
-        Surface::Snow => 2,
-        Surface::Stone => 3,
+impl From<Surface> for u8 {
+    fn from(surface: Surface) -> Self {
+        match surface {
+            Surface::Water => 0,
+            Surface::Ice => 1,
+            Surface::Snow => 2,
+            Surface::Stone => 3,
+        }
     }
 }
 
-pub fn decode(value: u8) -> Surface {
-    match value {
-        0 => Surface::Water,
-        1 => Surface::Ice,
-        2 => Surface::Snow,
-        3 => Surface::Stone,
-        _ => panic!(),
+impl From<u8> for Surface {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => Surface::Water,
+            1 => Surface::Ice,
+            2 => Surface::Snow,
+            3 => Surface::Stone,
+            _ => panic!(),
+        }
     }
 }
 
-fn surface_type_calculate_point(point: &Coordinate<f64>, ocean: &Brane<f64>) -> Surface {
-    if ocean.get(&point) > 0.0 {
+fn surface_type_calculate_datum(datum: &Coordinate<f64>, ocean: &Brane<f64>) -> Surface {
+    if ocean.get(&datum) > 0.0 {
         Surface::Water
     } else {
         Surface::Stone
@@ -46,7 +52,7 @@ pub fn surface_type_calculate(resolution: usize, ocean: &Brane<f64>) -> Brane<u8
 
     let mut brane = Brane::from(
         Brane::<u8>::vec_par_iter(resolution)
-            .map(|point| encode(surface_type_calculate_point(&point, &ocean)))
+            .map(|datum| encode(surface_type_calculate_datum(&datum, &ocean)))
             .collect::<Vec<u8>>(),
     );
     brane.variable = "surface-type".to_string();
@@ -62,7 +68,7 @@ pub fn surface_level_calculate(
     info!("calculating surface level");
     let mut brane = Brane::from(
         Brane::<f64>::vec_par_iter(resolution)
-            .map(|point| elevation.get(&point) + ocean.get(&point))
+            .map(|datum| elevation.get(&datum) + ocean.get(&datum))
             .collect::<Vec<f64>>(),
     );
     brane.variable = "surface-level".to_string();
@@ -75,8 +81,8 @@ pub fn surface_level_calculate(
 
 /* albedo */
 
-fn albedo_calculate_point(point: &Coordinate<f64>, surface: &Brane<u8>) -> f64 {
-    match decode(surface.get(&point)) {
+fn albedo_calculate_datum(datum: &Coordinate<f64>, surface: &Brane<u8>) -> f64 {
+    match decode(surface.get(&datum)) {
         Surface::Water => 0.06,
         Surface::Ice => 0.36,
         Surface::Snow => 0.9,
@@ -90,7 +96,7 @@ pub fn albedo_calculate(resolution: usize, surface: &Brane<u8>) -> Brane<f64> {
 
     let mut brane = Brane::from(
         Brane::<f64>::vec_par_iter(resolution)
-            .map(|point| albedo_calculate_point(&point, &surface))
+            .map(|datum| albedo_calculate_datum(&datum, &surface))
             .collect::<Vec<f64>>(),
     );
     brane.variable = "albedo".to_string();
@@ -99,8 +105,8 @@ pub fn albedo_calculate(resolution: usize, surface: &Brane<u8>) -> Brane<f64> {
 
 /* capacitance */
 
-fn capacitance_calculate_point(point: &Coordinate<f64>, surface: &Brane<u8>) -> f64 {
-    match decode(surface.get(&point)) {
+fn capacitance_calculate_datum(datum: &Coordinate<f64>, surface: &Brane<u8>) -> f64 {
+    match decode(surface.get(&datum)) {
         // heat capacitance in J*g^-1*K^-1
         Surface::Water => 4.1813,
         Surface::Ice => 2.05,
@@ -115,7 +121,7 @@ pub fn capacitance_calculate(resolution: usize, surface: &Brane<u8>) -> Brane<f6
 
     let mut brane = Brane::from(
         Brane::<f64>::vec_par_iter(resolution)
-            .map(|point| capacitance_calculate_point(&point, &surface))
+            .map(|datum| capacitance_calculate_datum(&datum, &surface))
             .collect::<Vec<f64>>(),
     );
     brane.variable = "capacitance".to_string();

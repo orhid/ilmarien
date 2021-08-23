@@ -1,13 +1,19 @@
-use crate::cartography::brane::Brane;
-use crate::util::constants::*;
-use geo::Coordinate;
+use crate::{
+    carto::{
+        brane::Brane,
+        datum::{DatumRe, Resolution},
+    },
+    util::constants::*,
+};
 use log::info;
 use noise::{NoiseFn, OpenSimplex, Seedable};
 use rayon::prelude::*;
 use splines::{Interpolation, Key, Spline};
 use std::f64::consts::TAU;
 
-fn elevation_ease_curve() -> Spline<f64, f64> {
+/* # bedrock generation */
+
+fn elevation_curve() -> Spline<f64, f64> {
     Spline::from_vec(vec![
         Key::new(-1., 0., Interpolation::Linear),
         Key::new(-0.4744, 0.1843, Interpolation::Linear),
@@ -23,21 +29,13 @@ fn elevation_ease_curve() -> Spline<f64, f64> {
     ])
 }
 
-fn elevation_generate_point(
-    point: &Coordinate<f64>,
-    noise: &OpenSimplex,
-    curve: &Spline<f64, f64>,
-) -> f64 {
-    let x: f64 = TAU * point.x;
-    let y: f64 = TAU * point.y;
-
-    let amplitude: f64 = (0..GEO_DETAIL)
-        .map(|amp| AMP_FACTOR.powi(-amp))
-        .sum::<f64>();
+fn bedrock_level_dt(datum: &DatumRe, noise: &OpenSimplex, curve: &Spline<f64, f64>) -> f64 {
+    let x: f64 = TAU * datum.x;
+    let y: f64 = TAU * datum.y;
 
     let value = (0..GEO_DETAIL)
         .map(|level| {
-            let freq = GEO_SCALE * 2.0_f64.powi(level);
+            let freq = GEO_SCALE * 2.0f64.powi(level);
             AMP_FACTOR.powi(-level)
                 * noise.get([
                     freq * x.cos(),
@@ -48,45 +46,60 @@ fn elevation_generate_point(
         })
         .sum::<f64>();
     curve
-        .clamped_sample(BLW_FACTOR * value / amplitude)
+        .clamped_sample(BLW_FACTOR * value * (1.0 - AMP_FACTOR.recip()))
         .unwrap()
 }
 
-/// generate an elevation model from Perlin noise
-/// the values will range from 0.0 to 1.0
-/// they correspond to the difference between 0 and 13824 meters
-pub fn elevation_generate(resolution: usize, seed: u32) -> Brane<f64> {
-    info!("generating elevation model");
+/**
+ * generate a bedrock elevation model from Perlin noise
+ * the values will range from 0.0 to 1.0
+ * they correspond to the difference between 0 and 13824 meters
+ */
+pub fn bedrock_level(resolution: Resolution, seed: u32) -> Brane<f64> {
+    info!("generating bedrock levels");
     let noise = OpenSimplex::new().set_seed(seed);
-    let curve = elevation_ease_curve();
+    let curve = elevation_curve();
 
     let mut brane = Brane::from(
-        Brane::<f64>::vec_par_iter(resolution)
-            .map(|point| elevation_generate_point(&point, &noise, &curve))
+        Brane::<f64>::par_iter(resolution)
+            .map(|datum| bedrock_level_dt(&datum, &noise, &curve))
             .collect::<Vec<f64>>(),
     );
-    brane.variable = "elevation".to_string();
+    brane.variable = "bedrock".to_string();
     brane
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use float_eq::assert_float_eq;
+    use float_eq::{assert_float_eq, assert_float_ne};
     const EPSILON: f64 = 0.0000_01;
 
     #[test]
-    fn elevation_generate_tileability() {
+    fn bedrock_level_values() {
+        let brane = bedrock_level(6.into(), 0);
+        assert_float_eq!(brane.grid[0], 0.262396, abs <= EPSILON);
+        assert_float_eq!(brane.grid[8], 0.295638, abs <= EPSILON);
+        assert_float_eq!(brane.grid[24], 0.247292, abs <= EPSILON);
+
+        let brane = bedrock_level(6.into(), 1);
+        assert_float_ne!(brane.grid[0], 0.262396, abs <= EPSILON);
+        assert_float_ne!(brane.grid[8], 0.295638, abs <= EPSILON);
+        assert_float_ne!(brane.grid[24], 0.247292, abs <= EPSILON);
+    }
+
+    #[test]
+    fn bedrock_level_tileability() {
         let noise = OpenSimplex::new();
-        let curve = elevation_ease_curve();
+        let curve = elevation_curve();
         assert_float_eq!(
-            elevation_generate_point(&Coordinate { x: 0.0, y: 0.1 }, &noise, &curve),
-            elevation_generate_point(&Coordinate { x: 0.0, y: 1.1 }, &noise, &curve),
+            bedrock_level_dt(&DatumRe::new(0.0, 0.1), &noise, &curve),
+            bedrock_level_dt(&DatumRe::new(0.0, 1.1), &noise, &curve),
             abs <= EPSILON,
         );
         assert_float_eq!(
-            elevation_generate_point(&Coordinate { x: 0.1, y: 0.0 }, &noise, &curve),
-            elevation_generate_point(&Coordinate { x: 1.1, y: 0.0 }, &noise, &curve),
+            bedrock_level_dt(&DatumRe::new(0.1, 0.0), &noise, &curve),
+            bedrock_level_dt(&DatumRe::new(1.1, 0.0), &noise, &curve),
             abs <= EPSILON,
         );
     }

@@ -3,8 +3,9 @@ use crate::climate::{geology as glg, hydrology as hdr, radiation as rad, surface
 
 #[allow(dead_code)]
 fn full_simulation(resolution: usize, seed: u32) {
+    /*
     // generate an initial elevation model
-    let elevation = glg::elevation_generate(resolution + seed as usize, seed);
+    let elevation = glg::bedrock_level(resolution + seed as usize, seed);
 
     // TODO: rock types map
 
@@ -45,4 +46,5 @@ fn full_simulation(resolution: usize, seed: u32) {
     // TODO: simulate seasons after the calamity, when the sun becomes unstable
     // this will lead to more diverse climate zones and ultimately better vegetation
     // this can also lead to food and resources maps and then to population and wealth maps
+    */
 }

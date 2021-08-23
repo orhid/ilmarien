@@ -55,4 +55,59 @@ pub fn insolation_watch_calculate(resolution: usize, watch: usize) -> Brane<f64>
     brane
 }
 
+*/
+
 /*
+
+// this may be useful when seasons come around
+
+/* ## absorbtion */
+
+fn temperature_absorb_point(
+    point: &Coordinate<f64>,
+    temperature: &Brane<f64>,
+    insolation: &Brane<f64>,
+    albedo: &Brane<f64>,
+    capacitance: &Brane<f64>,
+) -> f64 {
+    temperature.get(&point)
+        + TIME_LOCAL * insolation.get(&point) * (1.0 - albedo.get(&point)) / capacitance.get(&point)
+}
+
+pub fn temperature_absorb(
+    temperature: &mut Brane<f64>,
+    insolation: &Brane<f64>,
+    albedo: &Brane<f64>,
+    capacitance: &Brane<f64>,
+) {
+    info!("calculating temperature increase from absorbtion");
+
+    temperature.grid = temperature
+        .into_par_iter()
+        .map(|point| {
+            temperature_absorb_point(&point, &temperature, &insolation, &albedo, &capacitance)
+        })
+        .collect::<Vec<f64>>();
+}
+
+/* ## radiation */
+
+fn temperature_radiate_point(
+    point: &Coordinate<f64>,
+    temperature: &Brane<f64>,
+    capacitance: &Brane<f64>,
+) -> f64 {
+    let current = temperature.get(&point);
+    current - TIME_LOCAL * SB_CNST * current.powi(4) / capacitance.get(&point)
+}
+
+pub fn temperature_radiate(temperature: &mut Brane<f64>, capacitance: &Brane<f64>) {
+    info!("calculating temperature decrease from radiation");
+
+    temperature.grid = temperature
+        .into_par_iter()
+        .map(|point| temperature_radiate_point(&point, &temperature, &capacitance))
+        .collect::<Vec<f64>>();
+}
+
+*/

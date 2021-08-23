@@ -1,5 +1,5 @@
-use ilmarien::cartography::{colour as clr, render::Renderable};
-use ilmarien::climate::{geology as glg, hydrology as hdr, radiation as rad, surface as srf};
+// use ilmarien::cartography::{colour as clr, render::Renderable};
+// use ilmarien::climate::{geology as glg, hydrology as hdr, radiation as rad, surface as srf};
 
 use log::info;
 use pretty_env_logger;
@@ -7,11 +7,12 @@ use pretty_env_logger;
 #[allow(dead_code)]
 fn test_short() {}
 
+/*
 #[allow(dead_code)]
 fn test_sim() {
     let res: usize = 216;
     let seed = 0;
-    let elevation = glg::elevation_generate(res, seed);
+    let elevation = glg::bedrock_level(res, seed);
 
     let insolation = rad::insolation_calculate(res);
     let ocean = hdr::ocean_initialise(res, &elevation);
@@ -26,10 +27,11 @@ fn test_sim() {
     let rainfall = hdr::rainfall(&pressure, &evaporation, &surface_level);
     rainfall.render(clr::HueInk::new(0.54, 0.94));
 }
+*/
 
 fn main() {
     pretty_env_logger::init_timed();
     info!("initialising ilmarien");
-    test_sim();
+    test_short();
     info!("simulation completed")
 }
