@@ -1,8 +1,5 @@
 use crate::{
-    carto::{
-        brane::Brane,
-        datum::{DatumRe, Resolution},
-    },
+    carto::{brane::Brane, datum::DatumRe},
     util::constants::*,
 };
 use log::info;
@@ -55,7 +52,7 @@ fn bedrock_level_dt(datum: &DatumRe, noise: &OpenSimplex, curve: &Spline<f64, f6
  * the values will range from 0.0 to 1.0
  * they correspond to the difference between 0 and 13824 meters
  */
-pub fn bedrock_level(resolution: Resolution, seed: u32) -> Brane<f64> {
+pub fn bedrock_level(resolution: usize, seed: u32) -> Brane<f64> {
     info!("generating bedrock levels");
     let noise = OpenSimplex::new().set_seed(seed);
     let curve = elevation_curve();
@@ -77,12 +74,12 @@ mod test {
 
     #[test]
     fn bedrock_level_values() {
-        let brane = bedrock_level(6.into(), 0);
+        let brane = bedrock_level(6, 0);
         assert_float_eq!(brane.grid[0], 0.262396, abs <= EPSILON);
         assert_float_eq!(brane.grid[8], 0.295638, abs <= EPSILON);
         assert_float_eq!(brane.grid[24], 0.247292, abs <= EPSILON);
 
-        let brane = bedrock_level(6.into(), 1);
+        let brane = bedrock_level(6, 1);
         assert_float_ne!(brane.grid[0], 0.262396, abs <= EPSILON);
         assert_float_ne!(brane.grid[8], 0.295638, abs <= EPSILON);
         assert_float_ne!(brane.grid[24], 0.247292, abs <= EPSILON);

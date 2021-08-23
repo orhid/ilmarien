@@ -1,8 +1,8 @@
 use crate::{
     carto::{
         brane::Brane,
-        datum::{DatumRe, DatumZa, Resolution},
-        honeycomb::{Hexagon, HoneyCellPlanar, HoneyCellToroidal},
+        datum::{DatumRe, DatumZa},
+        honeycomb::{Hexagon, HoneyCellPlanar},
     },
     util::constants::*,
 };
@@ -36,7 +36,7 @@ fn insolation_dt(datum: &DatumRe, solar_pos: f64) -> f64 {
 }
 
 /// calculate insolation – the amount of radiation reaching the surface over a single day
-pub fn insolation(resolution: Resolution, solar_pos: f64) -> Brane<f64> {
+pub fn insolation(resolution: usize, solar_pos: f64) -> Brane<f64> {
     info!("calculating insolation model");
 
     let mut brane = Brane::from(
@@ -52,7 +52,7 @@ pub fn insolation(resolution: Resolution, solar_pos: f64) -> Brane<f64> {
 /* # temperature */
 
 /// initialise temperature to a given value in degrees Kelvin
-fn temperature_initialise(resolution: Resolution, insolation: &Brane<f64>) -> Brane<f64> {
+fn temperature_initialise(resolution: usize, insolation: &Brane<f64>) -> Brane<f64> {
     info!("initialising temperature");
     let mut brane = Brane::from(
         Brane::<f64>::par_iter(resolution)
@@ -87,7 +87,7 @@ fn temperature_diffuse(temperature: &mut Brane<f64>, surface: &Brane<u8>) {
 
 /// calculate average temperature
 pub fn temperature(
-    resolution: Resolution,
+    resolution: usize,
     insolation: &Brane<f64>,
     surface: &Brane<u8>,
 ) -> Brane<f64> {
@@ -108,7 +108,7 @@ fn pressure_elevation(pressure: f64, elevation: f64, temperature: f64) -> f64 {
 */
 
 /// calculate pressure at ocean level
-pub fn pressure_calculate(resolution: Resolution, temperature: &Brane<f64>) -> Brane<f64> {
+pub fn pressure_calculate(resolution: usize, temperature: &Brane<f64>) -> Brane<f64> {
     info!("calculating pressure at ocean level");
     let mut brane = Brane::from(
         Brane::<f64>::par_iter(resolution)
@@ -160,12 +160,12 @@ mod test {
 
     #[test]
     fn insolation_values() {
-        let brane = insolation(6.into(), 1.0);
+        let brane = insolation(6, 1.0);
         assert_float_eq!(brane.grid[0], 2.224531, abs <= EPSILON);
         assert_float_eq!(brane.grid[8], 1.913083, abs <= EPSILON);
         assert_float_eq!(brane.grid[24], 1.982061, abs <= EPSILON);
 
-        let brane = insolation(6.into(), 1.2);
+        let brane = insolation(6, 1.2);
         assert_float_ne!(brane.grid[0], 2.224531, abs <= EPSILON);
         assert_float_ne!(brane.grid[8], 1.913083, abs <= EPSILON);
         assert_float_ne!(brane.grid[24], 1.982061, abs <= EPSILON);

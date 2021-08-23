@@ -1,75 +1,23 @@
 use crate::carto::{
-    datum::{DatumRe, DatumZa, Resolution},
+    datum::{DatumRe, DatumZa},
     honeycomb::HoneyCellToroidal,
 };
 use log::{error, info};
 use num_traits::identities::Zero;
 use rayon::prelude::*;
-use std::{fs, ops::Deref, path::Path};
+use std::{fs, path::Path};
 use tiff::{decoder::*, encoder::*};
 
 /* # branes */
 
-/* ## indexes */
-
-#[derive(Debug, PartialEq)]
-pub struct BraneIndex(usize);
-
-impl Deref for BraneIndex {
-    type Target = usize;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<usize> for BraneIndex {
-    fn from(index: usize) -> BraneIndex {
-        Self(index)
-    }
-}
-
-impl From<BraneIndex> for usize {
-    fn from(index: BraneIndex) -> usize {
-        index.0
-    }
-}
-
-impl BraneIndex {
-    /// change a line datum to a lattice datum
-    pub fn enravel(&self, resolution: Resolution) -> DatumZa {
-        DatumZa {
-            x: (self.0 / resolution) as i32,
-            y: (self.0 % resolution) as i32,
-        }
-    }
-
-    /// change a lattice datum to a line datum
-    pub fn unravel(datum: &DatumZa, resolution: Resolution) -> Self {
-        Self((datum.x as usize % resolution) * resolution + datum.y as usize % resolution)
-    }
-}
-
-/* ## branes */
-
 #[derive(Clone)]
 pub struct Brane<T> {
     pub grid: Vec<T>,
-    pub resolution: Resolution,
+    pub resolution: usize,
     pub variable: String,
 }
 
 impl<T> Brane<T> {
-    /// change a line datum to a lattice datum
-    fn enravel(&self, index: BraneIndex) -> DatumZa {
-        index.enravel(self.resolution)
-    }
-
-    /// change a lattice datum to a line datum
-    fn unravel(&self, datum: &DatumZa) -> BraneIndex {
-        BraneIndex::unravel(datum, self.resolution)
-    }
-
     /// find a grid datum closest to given coordinate
     pub fn find(&self, datum: &DatumRe) -> DatumZa {
         datum.find(self.resolution)
@@ -84,7 +32,7 @@ impl<T> Brane<T> {
     pub fn ambit(&self, datum: &DatumRe) -> Vec<DatumRe> {
         datum
             .find(self.resolution)
-            .ambit_toroidal(self.resolution.into())
+            .ambit_toroidal(self.resolution as i32)
             .into_iter()
             .map(|gon| gon.cast(self.resolution))
             .collect::<Vec<DatumRe>>()
@@ -92,37 +40,23 @@ impl<T> Brane<T> {
 
     /// returns neighbouring datums
     pub fn ambit_exact(&self, datum: &DatumZa) -> Vec<DatumZa> {
-        datum.ambit_toroidal(self.resolution.into())
-    }
-
-    /// read a value at given coordinate
-    pub fn read(&self, datum: &DatumZa) -> T {
-        self.grid[self.unravel(&datum).0]
-    }
-
-    pub fn insert(&mut self, datum: &DatumZa, value: T) {
-        self.grid[BraneIndex::unravel(&datum, self.resolution).0] = value;
-    }
-
-    /// get a value nearest to given coordinate
-    pub fn get(&self, datum: &DatumRe) -> T {
-        self.read(&datum.find(self.resolution))
+        datum.ambit_toroidal(self.resolution as i32)
     }
 
     /// produces an iterator over all coordinates in a brane of given resolution
     /// not necessarily an existing brane, could be used later to create a brane from a computation
-    pub fn iter(resolution: Resolution) -> std::vec::IntoIter<DatumRe> {
+    pub fn iter(resolution: usize) -> std::vec::IntoIter<DatumRe> {
         (0..resolution.pow(2))
-            .map(|j| BraneIndex(j).enravel(resolution).cast(resolution))
+            .map(|j| DatumZa::enravel(j, resolution).cast(resolution))
             .collect::<Vec<DatumRe>>()
             .into_iter()
     }
 
     /// produces a parallelised iterator over all coordinates in a brane of given resolution
     /// not necessarily an existing brane, could be used later to create a brane from a computation
-    pub fn par_iter(resolution: Resolution) -> rayon::vec::IntoIter<DatumRe> {
+    pub fn par_iter(resolution: usize) -> rayon::vec::IntoIter<DatumRe> {
         (0..resolution.pow(2))
-            .map(|j| BraneIndex(j).enravel(resolution).cast(resolution))
+            .map(|j| DatumZa::enravel(j, resolution).cast(resolution))
             .collect::<Vec<DatumRe>>()
             .into_par_iter()
     }
@@ -131,7 +65,7 @@ impl<T> Brane<T> {
     /// used mainly for rendering
     pub fn iter_exact(&self) -> std::vec::IntoIter<DatumZa> {
         (0..self.resolution.pow(2))
-            .map(|j| self.enravel(j.into()))
+            .map(|j| DatumZa::enravel(j, self.resolution))
             .collect::<Vec<DatumZa>>()
             .into_iter()
     }
@@ -140,7 +74,7 @@ impl<T> Brane<T> {
     /// used mainly for rendering
     pub fn par_iter_exact(&self) -> rayon::vec::IntoIter<DatumZa> {
         (0..self.resolution.pow(2))
-            .map(|j| self.enravel(j.into()))
+            .map(|j| DatumZa::enravel(j, self.resolution))
             .collect::<Vec<DatumZa>>()
             .into_par_iter()
     }
@@ -164,9 +98,25 @@ impl<T> IntoParallelIterator for &Brane<T> {
     }
 }
 
+impl<T: Copy> Brane<T> {
+    /// read a value at given coordinate
+    pub fn read(&self, datum: &DatumZa) -> T {
+        self.grid[datum.unravel(self.resolution)]
+    }
+
+    pub fn insert(&mut self, datum: &DatumZa, value: T) {
+        self.grid[datum.unravel(self.resolution)] = value;
+    }
+
+    /// get a value nearest to given coordinate
+    pub fn get(&self, datum: &DatumRe) -> T {
+        self.read(&datum.find(self.resolution))
+    }
+}
+
 impl<T: Zero + Clone> Brane<T> {
     /// create a new brane filled with zeros
-    pub fn zeros(resolution: Resolution) -> Self {
+    pub fn zeros(resolution: usize) -> Self {
         info!("initialising empty brane at resolution {}", resolution);
         Brane {
             grid: vec![T::zero(); resolution.pow(2)],
@@ -176,7 +126,7 @@ impl<T: Zero + Clone> Brane<T> {
     }
 }
 
-fn find_resolution(variable: &str) -> Resolution {
+fn find_resolution(variable: &str) -> usize {
     let mut files = Vec::new();
     if let Ok(entries) = fs::read_dir("static") {
         for entry in entries.flatten() {
@@ -190,13 +140,11 @@ fn find_resolution(variable: &str) -> Resolution {
     let mut resolutions = files
         .iter()
         .map(|file| {
-            Resolution::new(
-                file[variable.len() + 1..file.len() - 4]
-                    .parse::<usize>()
-                    .expect("variable contains something weird"),
-            )
+            file[variable.len() + 1..file.len() - 4]
+                .parse::<usize>()
+                .expect("variable contains something weird")
         })
-        .collect::<Vec<Resolution>>();
+        .collect::<Vec<usize>>();
     resolutions.sort_unstable();
     resolutions
         .pop()
@@ -211,8 +159,8 @@ impl Brane<u8> {
         TiffEncoder::new(&mut fs::File::create(&Path::new(&path_name)).unwrap())
             .unwrap()
             .write_image::<colortype::Gray8>(
-                *self.resolution as u32,
-                *self.resolution as u32,
+                self.resolution as u32,
+                self.resolution as u32,
                 &self.grid,
             )
             .unwrap();
@@ -246,8 +194,8 @@ impl Brane<u16> {
         TiffEncoder::new(&mut fs::File::create(&Path::new(&path_name)).unwrap())
             .unwrap()
             .write_image::<colortype::Gray16>(
-                *self.resolution as u32,
-                *self.resolution as u32,
+                self.resolution as u32,
+                self.resolution as u32,
                 &self.grid,
             )
             .unwrap();
@@ -368,10 +316,10 @@ impl From<&Brane<u16>> for Brane<f64> {
     }
 }
 
-impl<T: Copy> From<Vec<T>> for Brane<T> {
+impl<T> From<Vec<T>> for Brane<T> {
     fn from(vector: Vec<T>) -> Self {
         let square = vector.len();
-        let resolution = Resolution::from((square as f64).sqrt() as usize);
+        let resolution = (square as f64).sqrt() as usize;
         if resolution.pow(2) == square {
             Brane {
                 grid: vector,
@@ -385,16 +333,28 @@ impl<T: Copy> From<Vec<T>> for Brane<T> {
     }
 }
 
-/*
-type Onion<T>
-= Brane<Vec<T>>;
+/* ## onions */
+
+pub type Onion<T> = Brane<Vec<T>>;
 
 impl<T> Onion<T> {
-    pub fn push(&mut self, datum: &DatumRe, value: T) {
-        self.grid[BraneIndex::unravel(&datum, self.resolution).0].push(value);
+    pub fn push(&mut self, datum: &DatumZa, value: T) {
+        self.grid[datum.unravel(self.resolution)].push(value);
     }
 }
-*/
+
+impl<T: Clone> Onion<T> {
+    /// creates iterator over column at given datum
+    pub fn iter_column(&self, datum: &DatumZa) -> std::vec::IntoIter<T> {
+        self.grid[datum.unravel(self.resolution)]
+            .clone()
+            .into_iter()
+    }
+
+    pub fn top(&self, datum: &DatumZa) -> Option<T> {
+        self.grid[datum.unravel(self.resolution)].clone().pop()
+    }
+}
 
 #[cfg(test)]
 mod test {
@@ -403,71 +363,12 @@ mod test {
     const EPSILON: f64 = 0.001;
 
     /* # branes */
-    /* ## indexes */
-
-    #[test]
-    fn index_enravel() {
-        assert_eq!(BraneIndex(0).enravel(4.into()), DatumZa { x: 0, y: 0 });
-        assert_eq!(BraneIndex(1).enravel(4.into()), DatumZa { x: 0, y: 1 });
-        assert_eq!(BraneIndex(4).enravel(4.into()), DatumZa { x: 1, y: 0 });
-        assert_eq!(BraneIndex(7).enravel(4.into()), DatumZa { x: 1, y: 3 });
-    }
-
-    #[test]
-    fn index_unravel() {
-        assert_eq!(
-            BraneIndex::unravel(&DatumZa { x: 0, y: 0 }, 4.into()),
-            BraneIndex(0)
-        );
-        assert_eq!(
-            BraneIndex::unravel(&DatumZa { x: 0, y: 1 }, 4.into()),
-            BraneIndex(1)
-        );
-        assert_eq!(
-            BraneIndex::unravel(&DatumZa { x: 1, y: 0 }, 4.into()),
-            BraneIndex(4)
-        );
-        assert_eq!(
-            BraneIndex::unravel(&DatumZa { x: 1, y: 3 }, 4.into()),
-            BraneIndex(7)
-        );
-    }
-
-    #[test]
-    fn index_enravel_unravel() {
-        let datum = DatumZa { x: 0, y: 1 };
-        assert_eq!(
-            BraneIndex::unravel(&datum, 4.into()).enravel(4.into()),
-            datum,
-        );
-        let datum = DatumZa { x: 1, y: 0 };
-        assert_eq!(
-            BraneIndex::unravel(&datum, 4.into()).enravel(4.into()),
-            datum,
-        );
-    }
-
-    #[test]
-    fn index_unravel_enravel() {
-        let index = BraneIndex(1);
-        assert_eq!(
-            BraneIndex::unravel(&index.enravel(4.into()), 4.into()),
-            index
-        );
-        let index = BraneIndex(4);
-        assert_eq!(
-            BraneIndex::unravel(&index.enravel(4.into()), 4.into()),
-            index
-        );
-    }
-
-    /* ## branes */
 
     #[test]
     fn brane_read() {
         let brane = Brane {
             grid: vec![0, 1, 2, 3],
-            resolution: Resolution::new(2),
+            resolution: 2,
             variable: "test".to_string(),
         };
         assert_eq!(brane.read(&DatumZa { x: 1, y: 0 }), 2);
@@ -478,7 +379,7 @@ mod test {
     fn brane_get() {
         let brane = Brane {
             grid: vec![0, 1, 2, 3],
-            resolution: Resolution::new(2),
+            resolution: 2,
             variable: "test".to_string(),
         };
         assert_eq!(brane.get(&DatumRe { x: 0.5, y: 0.0 }), 2);
@@ -500,17 +401,17 @@ mod test {
     fn brane_type_conversion() {
         let brane_f64 = Brane {
             grid: vec![0.0_f64, 0.5, 1.0, 0.5],
-            resolution: Resolution::new(4),
+            resolution: 4,
             variable: "test".to_string(),
         };
         let brane_u16 = Brane {
             grid: vec![0_u16, 32767, 65535, 32767],
-            resolution: Resolution::new(4),
+            resolution: 4,
             variable: "test".to_string(),
         };
         let brane_u8 = Brane {
             grid: vec![0_u8, 127, 255, 127],
-            resolution: Resolution::new(4),
+            resolution: 4,
             variable: "test".to_string(),
         };
         assert_eq!(Brane::<u16>::from(&brane_f64).grid, brane_u16.grid);
@@ -529,10 +430,10 @@ mod test {
 
     #[test]
     fn brane_zeros() {
-        assert_eq!(Brane::<u8>::zeros(4.into()).grid, vec![0; 16]);
-        assert_eq!(Brane::<u16>::zeros(4.into()).grid, vec![0; 16]);
+        assert_eq!(Brane::<u8>::zeros(4).grid, vec![0; 16]);
+        assert_eq!(Brane::<u16>::zeros(4).grid, vec![0; 16]);
         assert_float_eq!(
-            Brane::<f64>::zeros(4.into()).grid,
+            Brane::<f64>::zeros(4).grid,
             vec![0.0; 16],
             abs <= vec![EPSILON; 16]
         );
@@ -558,5 +459,15 @@ mod test {
 
         fs::remove_file("static/test-write-u8-2.tif").expect("test failed");
         fs::remove_file("static/test-write-u16-2.tif").expect("test failed");
+    }
+
+    /* ## onions */
+
+    #[test]
+    fn top_does_not_pop() {
+        let onion = Onion::from(vec![vec![0, 1], vec![0, 1], vec![0, 1], vec![0, 1]]);
+        let datum = DatumZa::new(0, 0);
+        assert_eq!(onion.top(&datum), Some(1));
+        assert_eq!(onion.grid[0].len(), 2);
     }
 }
