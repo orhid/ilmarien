@@ -1,6 +1,7 @@
-use crate::cartography::brane::Brane;
-use crate::climate::surface::{decode, Surface};
-use geo::Coordinate;
+use crate::{
+    carto::{brane::Brane, datum::DatumRe},
+    climate::cosmos::Fabric,
+};
 
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum Medium {
@@ -8,34 +9,34 @@ pub enum Medium {
     Ocean,
 }
 
-pub fn diffusion_medium(
-    point: &Coordinate<f64>,
+pub fn diffuse_medium(
+    datum: &DatumRe,
     medium: Medium,
     fluid: &Brane<f64>,
-    surface: &Brane<u8>,
+    surface: &Brane<Fabric>,
 ) -> f64 {
-    if medium == Medium::Air || decode(surface.get(&point)) == Surface::Water {
-        let mut ambit = fluid.ambit(&point);
+    if medium == Medium::Air || surface.get(&datum) == Fabric::Water {
+        let mut ambit = fluid.ambit(&datum);
         if medium == Medium::Ocean {
             ambit = ambit
                 .into_iter()
-                .filter(|gon| decode(surface.get(&gon)) == Surface::Water)
+                .filter(|gon| surface.get(&gon) == Fabric::Water)
                 .collect();
         }
         let len = ambit.len() as f64;
         if len > 0.0 {
             ambit.into_iter().map(|gon| fluid.get(&gon)).sum::<f64>() / len
         } else {
-            fluid.get(&point)
+            fluid.get(&datum)
         }
     } else {
-        fluid.get(&point)
+        fluid.get(&datum)
     }
 }
 
-pub fn diffusion_level(point: &Coordinate<f64>, fluid: &Brane<f64>, level: &Brane<f64>) -> f64 {
-    let herelev = level.get(&point);
-    let mut ambit = fluid.ambit(&point);
+pub fn diffuse_level(datum: &DatumRe, fluid: &Brane<f64>, level: &Brane<f64>) -> f64 {
+    let herelev = level.get(&datum);
+    let mut ambit = fluid.ambit(&datum);
     ambit = ambit
         .into_iter()
         .filter(|gon| (level.get(&gon) - herelev).abs() < 0.032)
@@ -44,7 +45,7 @@ pub fn diffusion_level(point: &Coordinate<f64>, fluid: &Brane<f64>, level: &Bran
     if len > 0.0 {
         ambit.into_iter().map(|gon| fluid.get(&gon)).sum::<f64>() / len
     } else {
-        fluid.get(&point)
+        fluid.get(&datum)
     }
 }
 

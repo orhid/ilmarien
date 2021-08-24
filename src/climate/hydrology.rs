@@ -15,30 +15,6 @@ use petgraph::{
 use rayon::prelude::*;
 use std::cmp::{max, min};
 
-/* # initialise */
-
-fn ocean_initialise_point(point: &Coordinate<f64>, elevation: &Brane<f64>) -> f64 {
-    let pelev = elevation.get(&point);
-    if pelev < INIT_OCEAN_LEVEL {
-        INIT_OCEAN_LEVEL - pelev
-    } else {
-        0.0
-    }
-}
-
-/// calculate initial ocean level
-pub fn ocean_initialise(resolution: usize, elevation: &Brane<f64>) -> Brane<f64> {
-    info!("calculating initial ocean level");
-
-    let mut brane = Brane::from(
-        Brane::<f64>::vec_par_iter(resolution)
-            .map(|point| ocean_initialise_point(&point, &elevation))
-            .collect::<Vec<f64>>(),
-    );
-    brane.variable = "ocean".to_string();
-    brane
-}
-
 /* # rainfall */
 
 /* ## evaporation */

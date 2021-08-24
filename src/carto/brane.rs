@@ -18,6 +18,11 @@ pub struct Brane<T> {
 }
 
 impl<T> Brane<T> {
+    /// change value at given datum
+    pub fn insert(&mut self, datum: &DatumZa, value: T) {
+        self.grid[datum.unravel(self.resolution)] = value;
+    }
+
     /// find a grid datum closest to given coordinate
     pub fn find(&self, datum: &DatumRe) -> DatumZa {
         datum.find(self.resolution)
@@ -102,10 +107,6 @@ impl<T: Copy> Brane<T> {
     /// read a value at given coordinate
     pub fn read(&self, datum: &DatumZa) -> T {
         self.grid[datum.unravel(self.resolution)]
-    }
-
-    pub fn insert(&mut self, datum: &DatumZa, value: T) {
-        self.grid[datum.unravel(self.resolution)] = value;
     }
 
     /// get a value nearest to given coordinate

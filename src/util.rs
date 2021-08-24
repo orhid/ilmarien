@@ -1,2 +1,2 @@
 pub mod constants;
-// pub mod diffusion;
+pub mod diffusion;

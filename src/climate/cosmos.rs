@@ -7,7 +7,7 @@ use rayon::prelude::*;
 
 /* # fabrics */
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Fabric {
     Water,
     Snow,
@@ -122,9 +122,9 @@ mod test {
     const EPSILON: f64 = 0.001;
 
     #[test]
-    fn initialise_bedrock() {
+    fn initialise_bedrock_values() {
         let bedrock = Brane::from(vec![0.0, 0.25, 0.5, 0.75]);
-        let cosmos = super::initialise_bedrock(&bedrock);
+        let cosmos = initialise_bedrock(&bedrock);
         assert_eq!(cosmos.grid.len(), 4);
         let elevation = elevation(&cosmos);
         assert_float_eq!(elevation.grid[0], 0.0, abs <= EPSILON);
@@ -136,9 +136,9 @@ mod test {
     }
 
     #[test]
-    fn initialise() {
+    fn initialise_values() {
         let bedrock = Brane::from(vec![0.0, 0.25, 0.5, 0.75]);
-        let cosmos = super::initialise(&bedrock);
+        let cosmos = initialise(&bedrock);
         assert_eq!(cosmos.grid[0].len(), 2);
         let elevation = elevation(&cosmos);
         assert_float_eq!(elevation.grid[0], 0.25, abs <= EPSILON);

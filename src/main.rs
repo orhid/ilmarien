@@ -1,11 +1,17 @@
-// use ilmarien::cartography::{colour as clr, render::Renderable};
+use ilmarien::{
+    carto::{colour as clr, render::Renderable},
+    climate::geology as glg,
+};
 // use ilmarien::climate::{geology as glg, hydrology as hdr, radiation as rad, surface as srf};
 
 use log::info;
 use pretty_env_logger;
 
 #[allow(dead_code)]
-fn test_short() {}
+fn test_short() {
+    let bedrock = glg::bedrock_level(108, 0);
+    bedrock.render(clr::ElevationInk);
+}
 
 /*
 #[allow(dead_code)]

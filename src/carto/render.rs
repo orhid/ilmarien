@@ -1,7 +1,8 @@
-use crate::cartography::{
+use crate::carto::{
     brane::Brane,
     colour::Ink,
-    hexagonos::{Gon, Tile, Tileable},
+    datum::DatumZa,
+    honeycomb::{Hexagon, Tile, Tileable},
 };
 use geo::{
     orient::{Direction, Orient},
@@ -91,18 +92,24 @@ impl<T: Copy> Renderable<T> for Brane<T> {
         info!("rendering brane {}", self.variable);
         let one: i32 = self.resolution as i32;
         let mut terraces = HashMap::new();
-        for point in self.exact_iter() {
-            let tiling: Coordinate<i32> = match point.tile(one) {
-                Tile::Y => Coordinate { x: 0, y: 0 },
-                Tile::R => Coordinate { x: 0, y: -one },
-                Tile::B => Coordinate { x: -one, y: 0 },
-                Tile::G => Coordinate { x: -one, y: -one },
+        for datum in self.iter_exact() {
+            let tiling: DatumZa = match datum.tile(one) {
+                Tile::Y => DatumZa::new(0, 0),
+                Tile::R => DatumZa::new(0, -one),
+                Tile::B => DatumZa::new(-one, 0),
+                Tile::G => DatumZa::new(-one, -one),
             };
             terraces
-                .entry(ink.paint(self.read(&point)))
+                .entry(ink.paint(self.read(&datum)))
                 .or_insert_with(VecDeque::<MultiPolygon<f64>>::new)
                 .push_back(MultiPolygon::from(vec![Polygon::new(
-                    LineString::from((point + tiling).corners()),
+                    LineString::from(
+                        (datum + tiling)
+                            .corners()
+                            .into_iter()
+                            .map(|corner| Coordinate::<f64>::from(corner))
+                            .collect::<Vec<Coordinate<f64>>>(),
+                    ),
                     vec![],
                 )]));
         }
@@ -170,3 +177,5 @@ impl<T: Copy> Renderable<T> for Brane<T> {
     }
     */
 }
+
+// TODO: this should betested when it is more complete

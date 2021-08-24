@@ -4,7 +4,11 @@ use crate::{
         datum::{DatumRe, DatumZa},
         honeycomb::{Hexagon, HoneyCellPlanar},
     },
-    util::constants::*,
+    climate::cosmos::Fabric,
+    util::{
+        constants::*,
+        diffusion::{diffuse_level, diffuse_medium, Medium},
+    },
 };
 use log::info;
 use nalgebra::Vector3;
@@ -48,7 +52,6 @@ pub fn insolation(resolution: usize, solar_pos: f64) -> Brane<f64> {
     brane
 }
 
-/*
 /* # temperature */
 
 /// initialise temperature to a given value in degrees Kelvin
@@ -64,14 +67,14 @@ fn temperature_initialise(resolution: usize, insolation: &Brane<f64>) -> Brane<f
 }
 
 /// calculate temperature diffusion
-fn temperature_diffuse(temperature: &mut Brane<f64>, surface: &Brane<u8>) {
+fn temperature_diffuse(temperature: &mut Brane<f64>, surface: &Brane<Fabric>) {
     info!("calculating temperature diffusion");
 
     for j in 0..temperature.resolution * 12 {
         temperature.grid = temperature
-            .into_par_iter()
+            .par_iter()
             .map(|datum| {
-                diffusion_medium(
+                diffuse_medium(
                     &datum,
                     match j % 6 {
                         0 => Medium::Air,
@@ -89,7 +92,7 @@ fn temperature_diffuse(temperature: &mut Brane<f64>, surface: &Brane<u8>) {
 pub fn temperature(
     resolution: usize,
     insolation: &Brane<f64>,
-    surface: &Brane<u8>,
+    surface: &Brane<Fabric>,
 ) -> Brane<f64> {
     let mut temperature = temperature_initialise(resolution, insolation);
     temperature_diffuse(&mut temperature, surface);
@@ -108,7 +111,7 @@ fn pressure_elevation(pressure: f64, elevation: f64, temperature: f64) -> f64 {
 */
 
 /// calculate pressure at ocean level
-pub fn pressure_calculate(resolution: usize, temperature: &Brane<f64>) -> Brane<f64> {
+pub fn pressure(resolution: usize, temperature: &Brane<f64>) -> Brane<f64> {
     info!("calculating pressure at ocean level");
     let mut brane = Brane::from(
         Brane::<f64>::par_iter(resolution)
@@ -124,6 +127,7 @@ pub fn pressure_calculate(resolution: usize, temperature: &Brane<f64>) -> Brane<
     brane
 }
 
+/*
 /// calculate pressure gradient for moisture transportation, including elevation changes
 pub fn pressure_gradient(pressure: &Brane<f64>) -> (Graph<Coordinate<i32>, f64>, Vec<NodeIndex>) {
     info!("calculating pressure gradient");
@@ -171,5 +175,22 @@ mod test {
         assert_float_ne!(brane.grid[24], 1.982061, abs <= EPSILON);
     }
 
-    // test temperature
+    #[test]
+    fn temperature_values() {
+        let insolation = Brane::from((0..36).map(|j| j as f64).collect::<Vec<f64>>());
+        let surface = Brane::from((0..36).map(|_| Fabric::Stone).collect::<Vec<Fabric>>());
+        let brane = temperature(6, &insolation, &surface);
+        assert_float_eq!(brane.grid[0], 5294.517604, abs <= EPSILON);
+        assert_float_eq!(brane.grid[8], 5279.538180, abs <= EPSILON);
+        assert_float_eq!(brane.grid[24], 5339.466849, abs <= EPSILON);
+    }
+
+    #[test]
+    fn pressure_values() {
+        let temperature = Brane::from((0..36).map(|j| j as f64 + 273.0).collect::<Vec<f64>>());
+        let brane = pressure(6, &temperature);
+        assert_float_eq!(brane.grid[0], 1.027472, abs <= EPSILON);
+        assert_float_eq!(brane.grid[8], 1.012455, abs <= EPSILON);
+        assert_float_eq!(brane.grid[24], 0.984848, abs <= EPSILON);
+    }
 }
