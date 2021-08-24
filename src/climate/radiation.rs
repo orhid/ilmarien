@@ -127,21 +127,20 @@ pub fn pressure(resolution: usize, temperature: &Brane<f64>) -> Brane<f64> {
     brane
 }
 
-/*
 /// calculate pressure gradient for moisture transportation, including elevation changes
-pub fn pressure_gradient(pressure: &Brane<f64>) -> (Graph<Coordinate<i32>, f64>, Vec<NodeIndex>) {
+pub fn pressure_gradient(pressure: &Brane<f64>) -> (Graph<DatumZa, f64>, Vec<NodeIndex>) {
     info!("calculating pressure gradient");
 
-    let mut graph = Graph::<Coordinate<i32>, f64>::new();
-    let mut nodes = HashMap::<Coordinate<i32>, NodeIndex>::new();
+    let mut graph = Graph::<DatumZa, f64>::new();
+    let mut nodes = HashMap::<DatumZa, NodeIndex>::new();
     let mut roots = Vec::<NodeIndex>::new();
-    for datum in pressure.exact_iter() {
+    for datum in pressure.iter_exact() {
         let here = graph.add_node(datum);
         nodes.insert(datum, here);
     }
-    for datum in pressure.exact_iter() {
+    for datum in pressure.iter_exact() {
         let minbr = *pressure
-            .exact_ambit(&datum)
+            .ambit_exact(&datum)
             .iter()
             .min_by_key(|nbr| OrderedFloat(pressure.read(&nbr)))
             .unwrap();
@@ -154,7 +153,6 @@ pub fn pressure_gradient(pressure: &Brane<f64>) -> (Graph<Coordinate<i32>, f64>,
     }
     (graph, roots)
 }
-*/
 
 #[cfg(test)]
 mod test {

@@ -61,7 +61,7 @@ macro_rules! impl_datum {
     };
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct DatumZa {
     pub x: i32,
     pub y: i32,
