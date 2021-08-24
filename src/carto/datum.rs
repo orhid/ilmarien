@@ -1,5 +1,5 @@
 use geo::Coordinate;
-use ordered_float::OrderedFloat as Orf;
+use ord_subset::OrdSubsetIterExt;
 use std::{
     convert::From,
     ops::{Add, Div, Mul, Neg, Rem, Sub},
@@ -116,7 +116,7 @@ impl From<DatumRe> for DatumZa {
             },
         ]
         .iter()
-        .min_by_key(|g| Orf((datum.x - g.x).abs() + (datum.y - g.y).abs()))
+        .ord_subset_min_by_key(|g| (datum.x - g.x).abs() + (datum.y - g.y).abs())
         .unwrap();
         Self {
             x: candidate.x as i32,

@@ -2,20 +2,16 @@ use crate::{
     carto::{
         brane::Brane,
         datum::{DatumRe, DatumZa},
+        flux::Flux,
         honeycomb::{Hexagon, HoneyCellPlanar},
     },
     climate::cosmos::Fabric,
-    util::{
-        constants::*,
-        diffusion::{diffuse_level, diffuse_medium, Medium},
-    },
+    util::diffusion::{diffuse_medium, Medium},
+    vars::*,
 };
 use log::info;
 use nalgebra::Vector3;
-use ordered_float::OrderedFloat;
-use petgraph::graph::{Graph, NodeIndex};
 use rayon::prelude::*;
-use std::collections::HashMap;
 
 /* # insolation */
 
@@ -55,10 +51,11 @@ pub fn insolation(resolution: usize, solar_pos: f64) -> Brane<f64> {
 /* # temperature */
 
 /// initialise temperature to a given value in degrees Kelvin
-fn temperature_initialise(resolution: usize, insolation: &Brane<f64>) -> Brane<f64> {
+fn temperature_initialise(insolation: &Brane<f64>) -> Brane<f64> {
     info!("initialising temperature");
     let mut brane = Brane::from(
-        Brane::<f64>::par_iter(resolution)
+        insolation
+            .par_iter()
             .map(|datum| insolation.get(&datum).mul_add(SOL_POWER, INIT_TEMP))
             .collect::<Vec<f64>>(),
     );
@@ -67,7 +64,7 @@ fn temperature_initialise(resolution: usize, insolation: &Brane<f64>) -> Brane<f
 }
 
 /// calculate temperature diffusion
-fn temperature_diffuse(temperature: &mut Brane<f64>, surface: &Brane<Fabric>) {
+fn temperature_diffuse(surface: &Brane<Fabric>, temperature: &mut Brane<f64>) {
     info!("calculating temperature diffusion");
 
     for j in 0..temperature.resolution * 12 {
@@ -89,13 +86,9 @@ fn temperature_diffuse(temperature: &mut Brane<f64>, surface: &Brane<Fabric>) {
 }
 
 /// calculate average temperature
-pub fn temperature(
-    resolution: usize,
-    insolation: &Brane<f64>,
-    surface: &Brane<Fabric>,
-) -> Brane<f64> {
-    let mut temperature = temperature_initialise(resolution, insolation);
-    temperature_diffuse(&mut temperature, surface);
+pub fn temperature(insolation: &Brane<f64>, surface: &Brane<Fabric>) -> Brane<f64> {
+    let mut temperature = temperature_initialise(insolation);
+    temperature_diffuse(surface, &mut temperature);
     temperature
 }
 
@@ -111,10 +104,11 @@ fn pressure_elevation(pressure: f64, elevation: f64, temperature: f64) -> f64 {
 */
 
 /// calculate pressure at ocean level
-pub fn pressure(resolution: usize, temperature: &Brane<f64>) -> Brane<f64> {
+pub fn pressure(temperature: &Brane<f64>) -> Brane<f64> {
     info!("calculating pressure at ocean level");
     let mut brane = Brane::from(
-        Brane::<f64>::par_iter(resolution)
+        temperature
+            .par_iter()
             .map(|datum| {
                 temperature
                     .get(&datum)
@@ -127,31 +121,11 @@ pub fn pressure(resolution: usize, temperature: &Brane<f64>) -> Brane<f64> {
     brane
 }
 
-/// calculate pressure gradient for moisture transportation, including elevation changes
-pub fn pressure_gradient(pressure: &Brane<f64>) -> (Graph<DatumZa, f64>, Vec<NodeIndex>) {
+/// calculate pressure gradient
+pub fn pressure_flux(pressure: &Brane<f64>) -> Flux<f64> {
     info!("calculating pressure gradient");
 
-    let mut graph = Graph::<DatumZa, f64>::new();
-    let mut nodes = HashMap::<DatumZa, NodeIndex>::new();
-    let mut roots = Vec::<NodeIndex>::new();
-    for datum in pressure.iter_exact() {
-        let here = graph.add_node(datum);
-        nodes.insert(datum, here);
-    }
-    for datum in pressure.iter_exact() {
-        let minbr = *pressure
-            .ambit_exact(&datum)
-            .iter()
-            .min_by_key(|nbr| OrderedFloat(pressure.read(&nbr)))
-            .unwrap();
-        let dif = pressure.read(&datum) - pressure.read(&minbr);
-        if dif > 0.0 {
-            graph.add_edge(nodes[&datum], nodes[&minbr], dif.recip().log10() * 0.1);
-        } else {
-            roots.push(nodes[&datum]);
-        }
-    }
-    (graph, roots)
+    Flux::<f64>::from(pressure)
 }
 
 #[cfg(test)]
@@ -175,9 +149,10 @@ mod test {
 
     #[test]
     fn temperature_values() {
-        let insolation = Brane::from((0..36).map(|j| j as f64).collect::<Vec<f64>>());
-        let surface = Brane::from((0..36).map(|_| Fabric::Stone).collect::<Vec<Fabric>>());
-        let brane = temperature(6, &insolation, &surface);
+        let brane = temperature(
+            &Brane::from((0..36).map(|j| j as f64).collect::<Vec<f64>>()),
+            &Brane::from((0..36).map(|_| Fabric::Stone).collect::<Vec<Fabric>>()),
+        );
         assert_float_eq!(brane.grid[0], 5294.517604, abs <= EPSILON);
         assert_float_eq!(brane.grid[8], 5279.538180, abs <= EPSILON);
         assert_float_eq!(brane.grid[24], 5339.466849, abs <= EPSILON);
@@ -185,8 +160,9 @@ mod test {
 
     #[test]
     fn pressure_values() {
-        let temperature = Brane::from((0..36).map(|j| j as f64 + 273.0).collect::<Vec<f64>>());
-        let brane = pressure(6, &temperature);
+        let brane = pressure(&Brane::from(
+            (0..36).map(|j| j as f64 + 273.0).collect::<Vec<f64>>(),
+        ));
         assert_float_eq!(brane.grid[0], 1.027472, abs <= EPSILON);
         assert_float_eq!(brane.grid[8], 1.012455, abs <= EPSILON);
         assert_float_eq!(brane.grid[24], 0.984848, abs <= EPSILON);

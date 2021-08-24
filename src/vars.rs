@@ -6,6 +6,10 @@
 // actually captures both time and mass of a single cell
 pub const TIME_LOCAL: f64 = 0.0032;
 
+/* ## cosmos */
+
+pub const INIT_OCEAN_LEVEL: f64 = 0.25; // initial ocean level
+
 /* ## geology */
 
 pub const HEX_AREA: f64 = 260956870.632; // area of the entire world in square kilometers
@@ -25,7 +29,3 @@ pub const MID_TEMP: f64 = 273.0; // initial world temperature
 pub const INIT_PRES: f64 = 0.5; // initial surface pressure
 pub const GAS_CONST: f64 = 144.0; // ideal gas constant
 pub const LAPSE_CONST: f64 = -396.0; // pressure lapse
-
-/* ## hydrology */
-
-pub const INIT_OCEAN_LEVEL: f64 = 0.25;

@@ -1,33 +1,30 @@
-use crate::climate::{geology as glg, hydrology as hdr, radiation as rad, surface as srf};
+use crate::climate::{cosmos as csm, geology as glg, hydrology as hdr, radiation as rad};
 //use ilmarien::imaging::{colour as clr, render::Renderable};
 
 #[allow(dead_code)]
+#[allow(unused_variables)]
 fn full_simulation(resolution: usize, seed: u32) {
-    /*
-    // generate an initial elevation model
-    let elevation = glg::bedrock_level(resolution + seed as usize, seed);
+    // initailise bedrock level
+    let bedrock = glg::bedrock_level(resolution, seed);
 
     // TODO: rock types map
 
-    //  calculate initial ocean levels
-    let ocean = hdr::ocean_initialise(resolution, &elevation);
+    //  initialise cosmic onion
+    //  calculate elevation ad surface models
+    let cosmos = csm::initialise(&bedrock);
+    let elevation = csm::elevation(&cosmos);
+    let surface = csm::surface(&cosmos);
 
-    //  calculate the surface types and their associated properties
-    let surface_type = srf::surface_type_calculate(resolution, &ocean);
-    let surface_level = srf::surface_level_calculate(resolution, &elevation, &ocean);
-
-    // calculate temperature
-    let insolation = rad::insolation_calculate(resolution / 3);
-    let temperature = rad::temperature_calculate(resolution / 3, &insolation, &surface_type);
-
-    // calculate surface pressure
-    let pressure = rad::pressure_calculate(resolution / 3, &temperature);
+    // calculate surface temperature adn pressure
+    let insolation = rad::insolation(resolution / 3, 1.0);
+    let temperature = rad::temperature(&insolation, &surface);
+    let pressure = rad::pressure(&temperature);
 
     // simulate rainfall
     // TODO: evaporation currently does not reduce ocean levels
-    let evaporation =
-        hdr::evaporation_calculate(resolution / 3, &surface_type, &temperature, &pressure);
-    let rainfall = hdr::rainfall(&pressure, &evaporation, &surface_level);
+    let evaporation = hdr::evaporation(&pressure, &surface, &temperature);
+    let pressure_flux = rad::pressure_flux(&pressure);
+    let rainfall = hdr::rainfall(&elevation, &evaporation, &pressure_flux);
 
     // TODO: simulate rivers
     // this should include sedimant transportation
@@ -46,5 +43,4 @@ fn full_simulation(resolution: usize, seed: u32) {
     // TODO: simulate seasons after the calamity, when the sun becomes unstable
     // this will lead to more diverse climate zones and ultimately better vegetation
     // this can also lead to food and resources maps and then to population and wealth maps
-    */
 }

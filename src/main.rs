@@ -1,8 +1,7 @@
 use ilmarien::{
     carto::{colour as clr, render::Renderable},
-    climate::geology as glg,
+    climate::{cosmos as csm, geology as glg, hydrology as hdr, radiation as rad},
 };
-// use ilmarien::climate::{geology as glg, hydrology as hdr, radiation as rad, surface as srf};
 
 use log::info;
 use pretty_env_logger;
@@ -13,31 +12,28 @@ fn test_short() {
     bedrock.render(clr::ElevationInk);
 }
 
-/*
 #[allow(dead_code)]
 fn test_sim() {
     let res: usize = 216;
     let seed = 0;
-    let elevation = glg::bedrock_level(res, seed);
+    let bedrock = glg::bedrock_level(res, seed);
+    let cosmos = csm::initialise(&bedrock);
+    let elevation = csm::elevation(&cosmos);
+    let surface = csm::surface(&cosmos);
 
-    let insolation = rad::insolation_calculate(res);
-    let ocean = hdr::ocean_initialise(res, &elevation);
-    let surface_type = srf::surface_type_calculate(res, &ocean);
-    let surface_level = srf::surface_level_calculate(res, &elevation, &ocean);
+    let insolation = rad::insolation(res / 3, 1.0);
+    let temperature = rad::temperature(&insolation, &surface);
+    let pressure = rad::pressure(&temperature);
 
-    let temperature = rad::temperature_calculate(res / 3, &insolation, &surface_type);
-    let pressure = rad::pressure_calculate(res / 3, &temperature);
-
-    let evaporation = hdr::evaporation_calculate(res / 3, &surface_type, &temperature, &pressure);
-
-    let rainfall = hdr::rainfall(&pressure, &evaporation, &surface_level);
+    let evaporation = hdr::evaporation(&pressure, &surface, &temperature);
+    let pressure_flux = rad::pressure_flux(&pressure);
+    let rainfall = hdr::rainfall(&elevation, &evaporation, &pressure_flux);
     rainfall.render(clr::HueInk::new(0.54, 0.94));
 }
-*/
 
 fn main() {
     pretty_env_logger::init_timed();
     info!("initialising ilmarien");
-    test_short();
+    test_sim();
     info!("simulation completed")
 }

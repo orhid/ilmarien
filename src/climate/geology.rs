@@ -1,6 +1,6 @@
 use crate::{
     carto::{brane::Brane, datum::DatumRe},
-    util::constants::*,
+    vars::*,
 };
 use log::info;
 use noise::{NoiseFn, OpenSimplex, Seedable};

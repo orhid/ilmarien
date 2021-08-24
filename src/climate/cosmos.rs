@@ -1,6 +1,6 @@
 use crate::{
     carto::brane::{Brane, Onion},
-    util::constants::*,
+    vars::*,
 };
 use log::info;
 use rayon::prelude::*;
@@ -123,8 +123,7 @@ mod test {
 
     #[test]
     fn initialise_bedrock_values() {
-        let bedrock = Brane::from(vec![0.0, 0.25, 0.5, 0.75]);
-        let cosmos = initialise_bedrock(&bedrock);
+        let cosmos = initialise_bedrock(&Brane::from(vec![0.0, 0.25, 0.5, 0.75]));
         assert_eq!(cosmos.grid.len(), 4);
         let elevation = elevation(&cosmos);
         assert_float_eq!(elevation.grid[0], 0.0, abs <= EPSILON);
@@ -137,8 +136,7 @@ mod test {
 
     #[test]
     fn initialise_values() {
-        let bedrock = Brane::from(vec![0.0, 0.25, 0.5, 0.75]);
-        let cosmos = initialise(&bedrock);
+        let cosmos = initialise(&Brane::from(vec![0.0, 0.25, 0.5, 0.75]));
         assert_eq!(cosmos.grid[0].len(), 2);
         let elevation = elevation(&cosmos);
         assert_float_eq!(elevation.grid[0], 0.25, abs <= EPSILON);

@@ -1,4 +1,4 @@
-use crate::util::constants::*;
+use crate::vars::*;
 
 /* # colour spaces */
 
