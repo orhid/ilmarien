@@ -29,3 +29,8 @@ pub const MID_TEMP: f64 = 273.0; // initial world temperature
 pub const INIT_PRES: f64 = 0.5; // initial surface pressure
 pub const GAS_CONST: f64 = 144.0; // ideal gas constant
 pub const LAPSE_CONST: f64 = -396.0; // pressure lapse
+
+/* ## hydrology */
+
+pub const EVA_RATE: f64 = 0.0000152587890625; // amount of water evaporated at every cycle
+pub const FLAT_RAIN: f64 = 0.18; // amount of moisture dropped while passing through flat terrain

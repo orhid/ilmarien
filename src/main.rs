@@ -15,8 +15,9 @@ fn test_short() {
 #[allow(dead_code)]
 fn test_sim() {
     let res: usize = 216;
-    let seed = 0;
+    let seed = 8;
     let bedrock = glg::bedrock_level(res, seed);
+    bedrock.render(clr::ElevationInk);
     let cosmos = csm::initialise(&bedrock);
     let elevation = csm::elevation(&cosmos);
     let surface = csm::surface(&cosmos);
@@ -26,9 +27,17 @@ fn test_sim() {
     let pressure = rad::pressure(&temperature);
 
     let evaporation = hdr::evaporation(&pressure, &surface, &temperature);
+    evaporation.stats();
+
     let pressure_flux = rad::pressure_flux(&pressure);
     let rainfall = hdr::rainfall(&elevation, &evaporation, &pressure_flux);
-    rainfall.render(clr::HueInk::new(0.54, 0.94));
+    rainfall.stats();
+    rainfall.render(clr::HueInk::new(0.54, 0.92));
+
+    let bedrock_flux = csm::elevation_flux(&bedrock);
+    let shed = hdr::shed(&bedrock_flux, &rainfall);
+    shed.stats();
+    shed.render(clr::HueInk::new(0.54, 0.92));
 }
 
 fn main() {

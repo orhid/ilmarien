@@ -1,5 +1,8 @@
 use crate::{
-    carto::brane::{Brane, Onion},
+    carto::{
+        brane::{Brane, Onion},
+        flux::Flux,
+    },
     vars::*,
 };
 use log::info;
@@ -69,6 +72,7 @@ fn initialise_bedrock(bedrock: &Brane<f64>) -> Cosmos {
     onion
 }
 
+/// calculate the surface level model
 pub fn elevation(cosmos: &Cosmos) -> Brane<f64> {
     info!("calculating elevation model");
 
@@ -87,6 +91,12 @@ pub fn elevation(cosmos: &Cosmos) -> Brane<f64> {
     brane
 }
 
+/// calculate the elevation gradient
+pub fn elevation_flux(elevation: &Brane<f64>) -> Flux<f64> {
+    Flux::<f64>::from(elevation)
+}
+
+/// initialise the cosmic onion
 pub fn initialise(bedrock: &Brane<f64>) -> Cosmos {
     info!("initialising cosmic onion");
 
@@ -102,6 +112,7 @@ pub fn initialise(bedrock: &Brane<f64>) -> Cosmos {
     cosmos
 }
 
+/// calculate the surface type model
 pub fn surface(cosmos: &Cosmos) -> Brane<Fabric> {
     info!("calculating surface model");
 
