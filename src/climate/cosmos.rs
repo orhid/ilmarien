@@ -97,7 +97,7 @@ impl Cosmos {
                 temperature.get(&datum.cast(self.resolution)) - lapse(elev.read(&datum)) - 273.0;
             let index = datum.unravel(self.resolution);
             let column = &mut self.grid[index];
-            let mut potential = tempdif.abs() * EVA_RATE;
+            let mut potential = tempdif.abs().sqrt() * EVA_RATE;
             if tempdif > 0.0 {
                 if column.last().unwrap().fabric == Fabric::Ice {
                     let mut ice = column.pop().unwrap();
@@ -107,7 +107,7 @@ impl Cosmos {
                     } else {
                         potential = ice.depth;
                     }
-                    icemelt.grid[index] = potential;
+                    icemelt.grid[index] = potential * EVA_RATE.recip();
                 }
             } else {
                 let mut oldice = 0.0;
@@ -128,6 +128,19 @@ impl Cosmos {
         }
         icemelt
     }
+
+    /*
+    pub fn snowfall(&mut self, rainfall: &mut Brane<f64>, temperature: &Brane<f64>) {
+        let elev = self.elevation();
+        for datum in self.iter_exact() {
+            let tempdif =
+                temperature.get(&datum.cast(self.resolution)) - lapse(elev.read(&datum)) - 273.0;
+            if tempdif < 0.0 {
+                let index = datum.unravel(self.resolution);
+            }
+        }
+    }
+    */
 
     fn lift_glaciers(&mut self) -> Self {
         // will assume that colums are already simplified
@@ -311,7 +324,7 @@ mod test {
         let mut cosmos = Brane::from(vec![
             vec![
                 Layer::new(Fabric::Stone, 0.24),
-                Layer::new(Fabric::Ice, 0.0006),
+                Layer::new(Fabric::Ice, 0.00006),
             ],
             vec![
                 Layer::new(Fabric::Stone, 0.24),
@@ -319,7 +332,7 @@ mod test {
             ],
             vec![
                 Layer::new(Fabric::Stone, 0.24),
-                Layer::new(Fabric::Water, 0.0006),
+                Layer::new(Fabric::Water, 0.00006),
             ],
             vec![
                 Layer::new(Fabric::Stone, 0.24),
@@ -331,8 +344,8 @@ mod test {
         assert_eq!(cosmos.grid[1].len(), 2);
         assert_eq!(cosmos.grid[2].len(), 2);
         assert_eq!(cosmos.grid[3].len(), 3);
-        assert_float_eq!(icemelt.grid[0], 0.0006, abs <= EPSILON);
-        assert!(icemelt.grid[1] > 0.0 && icemelt.grid[1] < 0.06);
+        assert_float_eq!(icemelt.grid[0], 0.00006 * EVA_RATE.recip(), abs <= EPSILON);
+        assert!(icemelt.grid[1] > 0.0 && icemelt.grid[1] < 0.06 * EVA_RATE.recip());
     }
 
     #[test]

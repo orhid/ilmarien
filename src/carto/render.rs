@@ -106,8 +106,8 @@ impl<T: Clone> Renderable<T> for Brane<T> {
                     LineString::from(
                         (datum + tiling)
                             .corners()
-                            .into_iter()
-                            .map(|corner| Coordinate::<f64>::from(corner))
+                            .iter()
+                            .map(|corner| Coordinate::<f64>::from(*corner))
                             .collect::<Vec<Coordinate<f64>>>(),
                     ),
                     vec![],

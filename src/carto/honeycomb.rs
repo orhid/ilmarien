@@ -45,7 +45,7 @@ impl From<Direction> for usize {
 }
 
 impl Direction {
-    pub fn iter() -> impl Iterator<Item = Direction> {
+    pub fn array() -> [Direction; 6] {
         [
             Direction::Xp,
             Direction::Zn,
@@ -54,8 +54,6 @@ impl Direction {
             Direction::Zp,
             Direction::Yn,
         ]
-        .iter()
-        .copied()
     }
 }
 
@@ -65,13 +63,11 @@ impl Direction {
 pub trait HoneyCellPlanar {
     fn neighbour_planar(&self, direction: Direction) -> Self;
 
-    fn ambit_planar(&self) -> Vec<Self>
+    fn ambit_planar(&self) -> [Self; 6]
     where
         Self: Sized,
     {
-        Direction::iter()
-            .map(|direction| self.neighbour_planar(direction))
-            .collect()
+        Direction::array().map(|direction| self.neighbour_planar(direction))
     }
 
     fn ring_planar(&self, radius: i32) -> Vec<Self>
@@ -127,7 +123,7 @@ impl HoneyCellPlanar for DatumZa {
                 y: (radius),
             };
         let mut ring = Vec::<Self>::new();
-        for direction in Direction::iter() {
+        for direction in Direction::array() {
             for _ in 0..radius {
                 ring.push(gon);
                 gon = gon.neighbour_planar(direction);
@@ -141,13 +137,11 @@ impl HoneyCellPlanar for DatumZa {
 pub trait HoneyCellToroidal {
     fn neighbour_toroidal(&self, direction: Direction, modulo: i32) -> Self;
 
-    fn ambit_toroidal(&self, modulo: i32) -> Vec<Self>
+    fn ambit_toroidal(&self, modulo: i32) -> [Self; 6]
     where
         Self: Sized,
     {
-        Direction::iter()
-            .map(|direction| self.neighbour_toroidal(direction, modulo))
-            .collect()
+        Direction::array().map(|direction| self.neighbour_toroidal(direction, modulo))
     }
 }
 
@@ -172,11 +166,9 @@ pub trait Hexagon {
             }
     }
 
-    fn corners(&self) -> Vec<DatumRe> {
+    fn corners(&self) -> [DatumRe; 6] {
         let centre = self.centre();
-        Direction::iter()
-            .map(|direction| self.corner(centre, direction))
-            .collect()
+        Direction::array().map(|direction| self.corner(centre, direction))
     }
 }
 
@@ -256,7 +248,7 @@ mod test {
         let org = DatumZa { x: 0, y: 0 };
         let ambit = org.ambit_planar();
         assert_eq!(ambit.len(), 6);
-        for direction in Direction::iter() {
+        for direction in Direction::array() {
             assert_eq!(
                 ambit[usize::from(direction)],
                 org.neighbour_planar(direction)
@@ -293,7 +285,7 @@ mod test {
         let org = DatumZa { x: 0, y: 0 };
         let amb = org.ambit_toroidal(4);
         assert_eq!(amb.len(), 6);
-        for direction in Direction::iter() {
+        for direction in Direction::array() {
             assert_eq!(
                 amb[usize::from(direction)],
                 org.neighbour_toroidal(direction, 4)

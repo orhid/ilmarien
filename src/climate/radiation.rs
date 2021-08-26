@@ -40,8 +40,9 @@ pub fn insolation(resolution: usize, solar_pos: f64) -> Brane<f64> {
     trace!("calculating insolation model");
 
     let mut brane = Brane::from(
-        Brane::<f64>::par_iter(resolution)
-            .map(|datum| insolation_dt(&datum, solar_pos))
+        (0..resolution.pow(2))
+            .into_par_iter()
+            .map(|j| insolation_dt(&DatumZa::enravel(j, resolution).cast(resolution), solar_pos))
             .collect::<Vec<f64>>(),
     );
     brane.variable = "insolation".to_string();
@@ -53,6 +54,9 @@ pub fn insolation(resolution: usize, solar_pos: f64) -> Brane<f64> {
 /// initialise temperature to a given value in degrees Kelvin
 fn temperature_initialise(insolation: &Brane<f64>) -> Brane<f64> {
     trace!("initialising temperature");
+    // this should be doable without cloning, need to work on the implementation
+    insolation.clone().mul_add(SOL_POWER, INIT_TEMP)
+    /*
     let mut brane = Brane::from(
         insolation
             .par_iter()
@@ -61,6 +65,7 @@ fn temperature_initialise(insolation: &Brane<f64>) -> Brane<f64> {
     );
     brane.variable = "temperature".to_string();
     brane
+        */
 }
 
 /// calculate temperature diffusion

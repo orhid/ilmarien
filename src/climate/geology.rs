@@ -1,5 +1,8 @@
 use crate::{
-    carto::{brane::Brane, datum::DatumRe},
+    carto::{
+        brane::Brane,
+        datum::{DatumRe, DatumZa},
+    },
     vars::*,
 };
 use log::trace;
@@ -58,8 +61,15 @@ pub fn bedrock_level(resolution: usize, seed: u32) -> Brane<f64> {
     let curve = elevation_curve();
 
     let mut brane = Brane::from(
-        Brane::<f64>::par_iter(resolution)
-            .map(|datum| bedrock_level_dt(&datum, &noise, &curve))
+        (0..resolution.pow(2))
+            .into_par_iter()
+            .map(|j| {
+                bedrock_level_dt(
+                    &DatumZa::enravel(j, resolution).cast(resolution),
+                    &noise,
+                    &curve,
+                )
+            })
             .collect::<Vec<f64>>(),
     );
     brane.variable = "bedrock".to_string();

@@ -98,26 +98,11 @@ impl From<DatumZa> for DatumRe {
 
 impl From<DatumRe> for DatumZa {
     fn from(datum: DatumRe) -> Self {
-        let xfl = datum.x.floor();
-        let yfl = datum.y.floor();
-        let candidate = *[
-            DatumRe { x: xfl, y: yfl },
-            DatumRe {
-                x: xfl + 1.0,
-                y: yfl,
-            },
-            DatumRe {
-                x: xfl,
-                y: yfl + 1.0,
-            },
-            DatumRe {
-                x: xfl + 1.0,
-                y: yfl + 1.0,
-            },
-        ]
-        .iter()
-        .ord_subset_min_by_key(|g| (datum.x - g.x).abs() + (datum.y - g.y).abs())
-        .unwrap();
+        let candidate = *datum
+            .rhombus()
+            .iter()
+            .ord_subset_min_by_key(|g| (datum.x - g.x as f64).abs() + (datum.y - g.y as f64).abs())
+            .unwrap();
         Self {
             x: candidate.x as i32,
             y: candidate.y as i32,
@@ -141,6 +126,11 @@ impl DatumZa {
 
     /// transform into a linear index
     pub fn unravel(self, resolution: usize) -> usize {
+        self.x as usize * resolution + self.y as usize
+    }
+
+    /// transform into a linear index carefully
+    pub fn unravel_safe(self, resolution: usize) -> usize {
         self.x as usize % resolution * resolution + self.y as usize % resolution
     }
 }
@@ -149,6 +139,30 @@ impl DatumRe {
     /// transform into a Zahl Datum
     pub fn find(self, resolution: usize) -> DatumZa {
         DatumZa::from(self * resolution as f64)
+    }
+
+    /// transform into a Zahl Datum faster
+    /// by simply flooring
+    pub fn floor(self, resolution: usize) -> DatumZa {
+        DatumZa {
+            x: (self.x * resolution as f64) as i32,
+            y: (self.y * resolution as f64) as i32,
+        }
+    }
+
+    /// four surrounding Zahl Data
+    pub fn rhombus(self) -> [DatumZa; 4] {
+        let xfl = self.x as i32;
+        let yfl = self.y as i32;
+        [
+            DatumZa { x: xfl, y: yfl },
+            DatumZa { x: xfl + 1, y: yfl },
+            DatumZa { x: xfl, y: yfl + 1 },
+            DatumZa {
+                x: xfl + 1,
+                y: yfl + 1,
+            },
+        ]
     }
 }
 

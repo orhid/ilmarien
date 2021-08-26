@@ -5,7 +5,12 @@ use crate::carto::{
 use log::{error, trace};
 use num_traits::identities::Zero;
 use rayon::prelude::*;
-use std::{fs, path::Path};
+use std::{
+    fs,
+    iter::FromIterator,
+    ops::{Add, Div, Mul, Sub},
+    path::Path,
+};
 use tiff::{decoder::*, encoder::*};
 
 /* # branes */
@@ -25,6 +30,11 @@ impl<T> Brane<T> {
 
     /// find a grid datum closest to given coordinate
     pub fn find(&self, datum: &DatumRe) -> DatumZa {
+        datum.floor(self.resolution)
+    }
+
+    /// find a grid datum closest to given coordinate
+    pub fn find_accurate(&self, datum: &DatumRe) -> DatumZa {
         datum.find(self.resolution)
     }
 
@@ -34,17 +44,15 @@ impl<T> Brane<T> {
     }
 
     /// returns neighbouring datums
-    pub fn ambit(&self, datum: &DatumRe) -> Vec<DatumRe> {
+    pub fn ambit(&self, datum: &DatumRe) -> [DatumRe; 6] {
         datum
-            .find(self.resolution)
+            .floor(self.resolution)
             .ambit_toroidal(self.resolution as i32)
-            .into_iter()
             .map(|gon| gon.cast(self.resolution))
-            .collect::<Vec<DatumRe>>()
     }
 
     /// returns neighbouring datums
-    pub fn ambit_exact(&self, datum: &DatumZa) -> Vec<DatumZa> {
+    pub fn ambit_exact(&self, datum: &DatumZa) -> [DatumZa; 6] {
         datum.ambit_toroidal(self.resolution as i32)
     }
 
@@ -85,6 +93,10 @@ impl<T> Brane<T> {
     }
 }
 
+// try to rethink all those iterators
+// collecting into a vec and then turning it into an iterator just has to be slower than something
+// more direct
+
 impl<T> IntoIterator for &Brane<T> {
     type Item = DatumRe;
     type IntoIter = std::vec::IntoIter<Self::Item>;
@@ -111,7 +123,7 @@ impl<T: Clone> Brane<T> {
 
     /// get a value nearest to given coordinate
     pub fn get(&self, datum: &DatumRe) -> T {
-        self.read(&datum.find(self.resolution)).clone()
+        self.read(&datum.floor(self.resolution))
     }
 }
 
@@ -122,6 +134,74 @@ impl<T: Zero + Clone> Brane<T> {
             grid: vec![T::zero(); resolution.pow(2)],
             resolution,
             variable: "zeros".to_string(),
+        }
+    }
+}
+
+macro_rules! impl_op_internal {
+    ($trait:ident, $method:ident, $op:tt) => {
+        impl<T: $trait> $trait for Brane<T>
+        where
+            Vec<T>: FromIterator<<T as $trait>::Output>,
+        {
+            type Output = Self;
+
+            fn $method(self, other: Self) -> Self {
+                Self {
+                    grid: self
+                        .grid
+                        .into_iter()
+                        .zip(other.grid.into_iter())
+                        .map(|(x, y)| x $op y)
+                        .collect::<Vec<T>>(),
+                    resolution: self.resolution,
+                    variable: format!("op-{}-{}", self.variable, other.variable),
+                }
+            }
+        }
+    };
+}
+
+macro_rules! impl_op_external {
+    ($trait:ident, $method:ident, $op:tt) => {
+        impl<T: $trait + Copy> $trait<T> for Brane<T>
+        where
+            Vec<T>: FromIterator<<T as $trait>::Output>,
+        {
+            type Output = Self;
+
+            fn $method(self, other: T) -> Self {
+                Self {
+                    grid: self
+                        .grid
+                        .into_iter()
+                        .map(|x| x $op other)
+                        .collect::<Vec<T>>(),
+                    resolution: self.resolution,
+                    variable: format!("op-{}", self.variable),
+                }
+            }
+        }
+    };
+}
+
+impl_op_internal!(Add, add, +);
+impl_op_internal!(Sub, sub, -);
+impl_op_external!(Add, add, +);
+impl_op_external!(Sub, sub, -);
+impl_op_external!(Mul, mul, *);
+impl_op_external!(Div, div, /);
+
+impl<T: Add<Output = T> + Copy + Mul<Output = T>> Brane<T> {
+    pub fn mul_add(self, xmul: T, xadd: T) -> Self {
+        Self {
+            grid: self
+                .grid
+                .into_iter()
+                .map(|x| x * xmul + xadd)
+                .collect::<Vec<T>>(),
+            resolution: self.resolution,
+            variable: format!("muladd-{}", self.variable),
         }
     }
 }
@@ -444,6 +524,38 @@ mod test {
             Brane::<f64>::zeros(4).grid,
             vec![0.0; 16],
             abs <= vec![EPSILON; 16]
+        );
+    }
+
+    #[test]
+    fn brane_add() {
+        assert_eq!(
+            (Brane::from(vec![0, 1, 2, 3]) + Brane::from(vec![1, 2, 3, 4])).grid,
+            Brane::from(vec![1, 3, 5, 7]).grid
+        );
+    }
+
+    #[test]
+    fn brane_sub() {
+        assert_eq!(
+            (Brane::from(vec![1, 2, 3, 4]) - Brane::from(vec![0, 1, 2, 3])).grid,
+            Brane::from(vec![1, 1, 1, 1]).grid
+        );
+    }
+
+    #[test]
+    fn brane_mul() {
+        assert_eq!(
+            (Brane::from(vec![1, 2, 3, 4]) * 2).grid,
+            Brane::from(vec![2, 4, 6, 8]).grid
+        );
+    }
+
+    #[test]
+    fn brane_div() {
+        assert_eq!(
+            (Brane::from(vec![2, 4, 6, 8]) / 2).grid,
+            Brane::from(vec![1, 2, 3, 4]).grid
         );
     }
 

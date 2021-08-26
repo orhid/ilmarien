@@ -104,19 +104,15 @@ fn rainfall_nd(
 }
 
 /// calculate the amount of rainfall reaching the surface
-pub fn rainfall(
-    elevation: &Brane<f64>,
-    evaporation: &Brane<f64>,
-    pressure_flux: &Flux<f64>,
-) -> Brane<f64> {
+pub fn rainfall(elevation: &Brane<f64>, evaporation: &Brane<f64>, wind: &Flux<f64>) -> Brane<f64> {
     trace!("calculating rainfall");
 
-    if evaporation.resolution != pressure_flux.resolution {
+    if evaporation.resolution != wind.resolution {
         warn!("rainfall: branes at incompatible resolutions: evaporation, pressure");
     }
 
     let mut rainfall = Brane::<f64>::zeros(evaporation.resolution);
-    let residues = pressure_flux
+    let residues = wind
         .roots
         .iter()
         .map(|node| {
@@ -125,14 +121,14 @@ pub fn rainfall(
                 *node,
                 elevation,
                 evaporation,
-                &pressure_flux.graph,
+                &wind.graph,
                 &mut rainfall,
             )
         })
         .collect::<Vec<f64>>();
 
-    for (j, node) in pressure_flux.roots.iter().enumerate() {
-        rainfall.grid[pressure_flux.graph[*node].unravel(rainfall.resolution)] += residues[j];
+    for (j, node) in wind.roots.iter().enumerate() {
+        rainfall.grid[wind.graph[*node].unravel(rainfall.resolution)] += residues[j];
     }
 
     for _ in 0..rainfall.resolution / 18 {
