@@ -8,8 +8,7 @@ use crate::{
     util::diffusion::diffuse_level,
     vars::*,
 };
-use log::debug;
-use log::{info, warn};
+use log::{trace, warn};
 use ord_subset::OrdSubsetIterExt;
 use petgraph::{
     graph::{Graph, NodeIndex},
@@ -47,7 +46,7 @@ pub fn evaporation(
     surface: &Brane<Fabric>,
     temperature: &Brane<f64>,
 ) -> Brane<f64> {
-    info!("calculating evaporation rate");
+    trace!("calculating evaporation rate");
 
     if temperature.resolution != pressure.resolution {
         warn!("evaporation: branes at incompatible resolutions: temperature, pressure");
@@ -110,7 +109,7 @@ pub fn rainfall(
     evaporation: &Brane<f64>,
     pressure_flux: &Flux<f64>,
 ) -> Brane<f64> {
-    info!("calculating rainfall");
+    trace!("calculating rainfall");
 
     if evaporation.resolution != pressure_flux.resolution {
         warn!("rainfall: branes at incompatible resolutions: evaporation, pressure");
@@ -167,7 +166,7 @@ fn shed_nd(
 
 /// calculate the amount of water flowing down to every datum
 pub fn shed(elevation_flux: &Flux<f64>, rainfall: &Brane<f64>) -> Brane<f64> {
-    info!("calculating watershed");
+    trace!("calculating watershed");
 
     let mut shed = Brane::<f64>::zeros(elevation_flux.resolution);
     for node in &elevation_flux.roots {

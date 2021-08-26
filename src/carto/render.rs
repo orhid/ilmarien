@@ -9,7 +9,7 @@ use geo::{
     {Coordinate, LineString, MultiPolygon, Polygon},
 };
 use geo_booleanop::boolean::BooleanOp;
-use log::info;
+use log::trace;
 use std::collections::{HashMap, VecDeque};
 use svg::node::element::Path;
 
@@ -84,12 +84,12 @@ fn cascade(mut terrace: VecDeque<MultiPolygon<f64>>) -> MultiPolygon<f64> {
     terrace.pop_front().unwrap()
 }
 
-impl<T: Copy> Renderable<T> for Brane<T> {
+impl<T: Clone> Renderable<T> for Brane<T> {
     fn render<S>(&self, ink: S)
     where
         S: Ink<T>,
     {
-        info!("rendering brane {}", self.variable);
+        trace!("rendering brane {}", self.variable);
         let one: i32 = self.resolution as i32;
         let mut terraces = HashMap::new();
         for datum in self.iter_exact() {

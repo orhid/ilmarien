@@ -2,7 +2,7 @@ use crate::carto::{
     datum::{DatumRe, DatumZa},
     honeycomb::HoneyCellToroidal,
 };
-use log::{error, info};
+use log::{error, trace};
 use num_traits::identities::Zero;
 use rayon::prelude::*;
 use std::{fs, path::Path};
@@ -103,22 +103,21 @@ impl<T> IntoParallelIterator for &Brane<T> {
     }
 }
 
-impl<T: Copy> Brane<T> {
+impl<T: Clone> Brane<T> {
     /// read a value at given coordinate
     pub fn read(&self, datum: &DatumZa) -> T {
-        self.grid[datum.unravel(self.resolution)]
+        self.grid[datum.unravel(self.resolution)].clone()
     }
 
     /// get a value nearest to given coordinate
     pub fn get(&self, datum: &DatumRe) -> T {
-        self.read(&datum.find(self.resolution))
+        self.read(&datum.find(self.resolution)).clone()
     }
 }
 
 impl<T: Zero + Clone> Brane<T> {
     /// create a new brane filled with zeros
     pub fn zeros(resolution: usize) -> Self {
-        info!("initialising empty brane at resolution {}", resolution);
         Brane {
             grid: vec![T::zero(); resolution.pow(2)],
             resolution,
@@ -156,7 +155,7 @@ impl Brane<u8> {
     /// save brane to a .tif file
     pub fn save(&self) {
         let path_name = format!("static/{}-u8-{}.tif", self.variable, self.resolution);
-        info!("saving brane to {}", path_name);
+        trace!("saving brane to {}", path_name);
         TiffEncoder::new(&mut fs::File::create(&Path::new(&path_name)).unwrap())
             .unwrap()
             .write_image::<colortype::Gray8>(
@@ -176,7 +175,7 @@ impl Brane<u8> {
             varextended,
             find_resolution(&varextended),
         );
-        info!("loading brane from {}", path_name);
+        trace!("loading brane from {}", path_name);
         let mut file = fs::File::open(&Path::new(&path_name)).unwrap();
         let mut tiff = Decoder::new(&mut file).unwrap();
 
@@ -191,7 +190,7 @@ impl Brane<u16> {
     /// save brane to a .tif file
     pub fn save(&self) {
         let path_name = format!("static/{}-u16-{}.tif", self.variable, self.resolution);
-        info!("saving brane to {}", path_name);
+        trace!("saving brane to {}", path_name);
         TiffEncoder::new(&mut fs::File::create(&Path::new(&path_name)).unwrap())
             .unwrap()
             .write_image::<colortype::Gray16>(
@@ -211,7 +210,7 @@ impl Brane<u16> {
             varextended,
             find_resolution(&varextended),
         );
-        info!("loading brane from {}", path_name);
+        trace!("loading brane from {}", path_name);
         let mut file = fs::File::open(&Path::new(&path_name)).unwrap();
         let mut tiff = Decoder::new(&mut file).unwrap();
 
@@ -237,18 +236,18 @@ impl Brane<f64> {
     pub fn stats(&self) {
         println!("stats for {}", self.variable);
         println!(
-            "min {}",
+            "min: {}",
             self.grid
                 .iter()
                 .min_by(|a, b| a.partial_cmp(b).unwrap())
                 .unwrap()
         );
         println!(
-            "med {}",
+            "med: {}",
             self.grid.iter().sum::<f64>() / self.grid.len() as f64
         );
         println!(
-            "max {}",
+            "max: {}",
             self.grid
                 .iter()
                 .max_by(|a, b| a.partial_cmp(b).unwrap())
@@ -354,6 +353,14 @@ impl<T: Clone> Onion<T> {
 
     pub fn top(&self, datum: &DatumZa) -> Option<T> {
         self.grid[datum.unravel(self.resolution)].clone().pop()
+    }
+}
+
+impl<T: PartialOrd> Onion<T> {
+    pub fn sort_columns(&mut self) {
+        for column in &mut self.grid {
+            column.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        }
     }
 }
 
@@ -465,7 +472,21 @@ mod test {
     /* ## onions */
 
     #[test]
-    fn top_does_not_pop() {
+    fn onion_push() {
+        let mut onion = Onion::from(vec![vec![0, 1]]);
+        onion.push(&DatumZa::new(0, 0), 2);
+        assert_eq!(onion.grid[0], vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn onion_sort_columns() {
+        let mut onion = Onion::from(vec![vec![1, 0]]);
+        onion.sort_columns();
+        assert_eq!(onion.grid[0], vec![0, 1]);
+    }
+
+    #[test]
+    fn onion_top_does_not_pop() {
         let onion = Onion::from(vec![vec![0, 1], vec![0, 1], vec![0, 1], vec![0, 1]]);
         let datum = DatumZa::new(0, 0);
         assert_eq!(onion.top(&datum), Some(1));

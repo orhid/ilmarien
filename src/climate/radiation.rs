@@ -9,7 +9,7 @@ use crate::{
     util::diffusion::{diffuse_medium, Medium},
     vars::*,
 };
-use log::info;
+use log::trace;
 use nalgebra::Vector3;
 use rayon::prelude::*;
 
@@ -37,7 +37,7 @@ fn insolation_dt(datum: &DatumRe, solar_pos: f64) -> f64 {
 
 /// calculate insolation – the amount of radiation reaching the surface over a single day
 pub fn insolation(resolution: usize, solar_pos: f64) -> Brane<f64> {
-    info!("calculating insolation model");
+    trace!("calculating insolation model");
 
     let mut brane = Brane::from(
         Brane::<f64>::par_iter(resolution)
@@ -52,7 +52,7 @@ pub fn insolation(resolution: usize, solar_pos: f64) -> Brane<f64> {
 
 /// initialise temperature to a given value in degrees Kelvin
 fn temperature_initialise(insolation: &Brane<f64>) -> Brane<f64> {
-    info!("initialising temperature");
+    trace!("initialising temperature");
     let mut brane = Brane::from(
         insolation
             .par_iter()
@@ -65,7 +65,7 @@ fn temperature_initialise(insolation: &Brane<f64>) -> Brane<f64> {
 
 /// calculate temperature diffusion
 fn temperature_diffuse(surface: &Brane<Fabric>, temperature: &mut Brane<f64>) {
-    info!("calculating temperature diffusion");
+    trace!("calculating temperature diffusion");
 
     for j in 0..temperature.resolution * 12 {
         temperature.grid = temperature
@@ -92,6 +92,11 @@ pub fn temperature(insolation: &Brane<f64>, surface: &Brane<Fabric>) -> Brane<f6
     temperature
 }
 
+/// calculate temperature lapse rate
+pub fn lapse(elevation: f64) -> f64 {
+    (elevation - INIT_OCEAN_LEVEL) * LAPSE_RATE
+}
+
 /* # pressure */
 
 /*
@@ -105,7 +110,7 @@ fn pressure_elevation(pressure: f64, elevation: f64, temperature: f64) -> f64 {
 
 /// calculate pressure at ocean level
 pub fn pressure(temperature: &Brane<f64>) -> Brane<f64> {
-    info!("calculating pressure at ocean level");
+    trace!("calculating pressure at ocean level");
     let mut brane = Brane::from(
         temperature
             .par_iter()
@@ -122,8 +127,8 @@ pub fn pressure(temperature: &Brane<f64>) -> Brane<f64> {
 }
 
 /// calculate pressure gradient
-pub fn pressure_flux(pressure: &Brane<f64>) -> Flux<f64> {
-    info!("calculating pressure gradient");
+pub fn wind(pressure: &Brane<f64>) -> Flux<f64> {
+    trace!("calculating pressure gradient");
 
     Flux::<f64>::from(pressure)
 }

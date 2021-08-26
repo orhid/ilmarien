@@ -1,4 +1,7 @@
-use crate::vars::*;
+use crate::{
+    climate::cosmos::{Fabric, Layer},
+    vars::*,
+};
 
 /* # colour spaces */
 
@@ -163,6 +166,58 @@ impl Ink<f64> for ElevationInk {
             RGB::new(138, 95, 80).paint()
         } else {
             RGB::new(115, 71, 67).paint()
+        }
+    }
+}
+
+pub struct TopographyInk {
+    ocean_level: f64,
+}
+
+impl TopographyInk {
+    pub fn new(ocean_level: f64) -> Self {
+        Self { ocean_level }
+    }
+}
+
+impl Ink<Vec<Layer>> for TopographyInk {
+    fn paint(&self, sample: Vec<Layer>) -> String {
+        let elevation = sample.iter().map(|layer| layer.depth).sum::<f64>();
+        let top = sample.last().unwrap();
+        match top.fabric {
+            Fabric::Water => {
+                if top.depth < 2.0 / 256.0 {
+                    RGB::new(162, 184, 170).paint()
+                } else if top.depth < 8.0 / 256.0 {
+                    RGB::new(134, 163, 151).paint()
+                } else if top.depth < 16.0 / 256.0 {
+                    RGB::new(94, 138, 130).paint()
+                } else {
+                    RGB::new(53, 89, 92).paint()
+                }
+            }
+            Fabric::Snow | Fabric::Ice => RGB::new(255, 255, 255).paint(),
+            _ => {
+                if elevation < self.ocean_level {
+                    RGB::new(223, 235, 217).paint()
+                } else if elevation < self.ocean_level + 2.0 / 256.0 {
+                    RGB::new(243, 245, 237).paint()
+                } else if elevation < self.ocean_level + 4.0 / 256.0 {
+                    RGB::new(233, 235, 216).paint()
+                } else if elevation < self.ocean_level + 8.0 / 256.0 {
+                    RGB::new(214, 213, 188).paint()
+                } else if elevation < self.ocean_level + 16.0 / 256.0 {
+                    RGB::new(199, 191, 163).paint()
+                } else if elevation < self.ocean_level + 32.0 / 256.0 {
+                    RGB::new(184, 165, 134).paint()
+                } else if elevation < self.ocean_level + 64.0 / 256.0 {
+                    RGB::new(163, 131, 104).paint()
+                } else if elevation < self.ocean_level + 128.0 / 256.0 {
+                    RGB::new(138, 95, 80).paint()
+                } else {
+                    RGB::new(115, 71, 67).paint()
+                }
+            }
         }
     }
 }
