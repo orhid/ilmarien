@@ -13,6 +13,8 @@ use log::trace;
 use std::collections::{HashMap, VecDeque};
 use svg::node::element::Path;
 
+// try to replace goe-orient with something and then dump the geo dependency in favour of geo-types
+
 /* # geometry to svg */
 
 trait ToSVG {
@@ -92,7 +94,7 @@ impl<T: Clone> Renderable<T> for Brane<T> {
         trace!("rendering brane {}", self.variable);
         let one: i32 = self.resolution as i32;
         let mut terraces = HashMap::new();
-        for datum in self.iter_exact() {
+        for datum in (0..self.resolution.pow(2)).map(|j| DatumZa::enravel(j, self.resolution)) {
             let tiling: DatumZa = match datum.tile(one) {
                 Tile::Y => DatumZa::new(0, 0),
                 Tile::R => DatumZa::new(0, -one),

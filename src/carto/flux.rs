@@ -18,11 +18,11 @@ impl<T: Copy + OrdSubset + Sub<Output = T> + Zero> From<&Brane<T>> for Flux<T> {
         let mut graph = Graph::<DatumZa, T>::new();
         let mut nodes = HashMap::<DatumZa, NodeIndex>::new();
         let mut roots = Vec::<NodeIndex>::new();
-        for datum in brane.iter_exact() {
+        for datum in (0..brane.resolution.pow(2)).map(|j| DatumZa::enravel(j, brane.resolution)) {
             let here = graph.add_node(datum);
             nodes.insert(datum, here);
         }
-        for datum in brane.iter_exact() {
+        for datum in (0..brane.resolution.pow(2)).map(|j| DatumZa::enravel(j, brane.resolution)) {
             let minbr = *brane
                 .ambit_exact(&datum)
                 .iter()

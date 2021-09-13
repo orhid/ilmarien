@@ -10,28 +10,28 @@ use crate::{
     vars::*,
 };
 use log::trace;
-use nalgebra::Vector3;
 use rayon::prelude::*;
 
 /* # insolation */
 
-fn vector_elevation(datum: &DatumRe, elevation: f64) -> Vector3<f64> {
+fn vector_elevation(datum: &DatumRe, elevation: f64) -> [f64; 3] {
     let cdatum = datum.centre();
-    Vector3::new(cdatum.x, cdatum.y, elevation)
+    [cdatum.x, cdatum.y, elevation]
 }
 
-fn insolation_sol(datum: &DatumRe, sol: &Vector3<f64>) -> f64 {
+fn insolation_sol(datum: &DatumRe, sol: [f64; 3]) -> f64 {
     // turns out, the influence of both elevation and slope is negligable
-    let solward = sol - vector_elevation(datum, 0.0);
-    let solward_norm = solward.norm();
-    solward_norm.powi(-2) * solward.dot(&Vector3::new(0.0, 0.0, 1.0)) * solward_norm.recip()
+    let pnt = vector_elevation(datum, 0.0);
+    let solward = [sol[0] - pnt[0], sol[1] - pnt[1], sol[2] - pnt[2]];
+    let solward_norm = solward.map(|j| j.powi(2)).iter().sum::<f64>().sqrt();
+    solward_norm.powi(-2) * solward[2] * solward_norm.recip()
 }
 
 fn insolation_dt(datum: &DatumRe, solar_pos: f64) -> f64 {
     DatumZa::from(*datum)
         .ball_planar(SOL_DETAIL)
         .into_iter()
-        .map(|sol| insolation_sol(datum, &vector_elevation(&DatumRe::from(sol), solar_pos)))
+        .map(|sol| insolation_sol(datum, vector_elevation(&DatumRe::from(sol), solar_pos)))
         .sum::<f64>()
 }
 
@@ -73,11 +73,11 @@ fn temperature_diffuse(surface: &Brane<Fabric>, temperature: &mut Brane<f64>) {
     trace!("calculating temperature diffusion");
 
     for j in 0..temperature.resolution * 12 {
-        temperature.grid = temperature
-            .par_iter()
-            .map(|datum| {
+        temperature.grid = (0..temperature.resolution.pow(2))
+            .into_par_iter()
+            .map(|k| {
                 diffuse_medium(
-                    &datum,
+                    &DatumZa::enravel(k, temperature.resolution).cast(temperature.resolution),
                     match j % 6 {
                         0 => Medium::Air,
                         _ => Medium::Ocean,
@@ -117,11 +117,11 @@ fn pressure_elevation(pressure: f64, elevation: f64, temperature: f64) -> f64 {
 pub fn pressure(temperature: &Brane<f64>) -> Brane<f64> {
     trace!("calculating pressure at ocean level");
     let mut brane = Brane::from(
-        temperature
-            .par_iter()
-            .map(|datum| {
+        (0..temperature.resolution.pow(2))
+            .into_par_iter()
+            .map(|j| {
                 temperature
-                    .get(&datum)
+                    .get(&DatumZa::enravel(j, temperature.resolution).cast(temperature.resolution))
                     .recip()
                     .mul_add(GAS_CONST, INIT_PRES)
             })

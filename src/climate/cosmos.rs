@@ -1,6 +1,7 @@
 use crate::{
     carto::{
         brane::{Brane, Onion},
+        datum::DatumZa,
         flux::Flux,
     },
     climate::radiation::lapse,
@@ -92,7 +93,8 @@ impl Cosmos {
         // assumes one has just solidified all snow, so only ice will be present
         let mut icemelt = Brane::<f64>::zeros(self.resolution);
         let elev = self.elevation();
-        for datum in self.iter_exact() {
+        let res = self.resolution;
+        for datum in (0..res.pow(2)).map(|j| DatumZa::enravel(j, res)) {
             let tempdif =
                 temperature.get(&datum.cast(self.resolution)) - lapse(elev.read(&datum)) - 273.0;
             let index = datum.unravel(self.resolution);
@@ -132,7 +134,7 @@ impl Cosmos {
     /*
     pub fn snowfall(&mut self, rainfall: &mut Brane<f64>, temperature: &Brane<f64>) {
         let elev = self.elevation();
-        for datum in self.iter_exact() {
+        for datum in (0..self.resolution.pow(2)).map(|j| DatumZa::enravel(j, self.resolution)) {
             let tempdif =
                 temperature.get(&datum.cast(self.resolution)) - lapse(elev.read(&datum)) - 273.0;
             if tempdif < 0.0 {
@@ -145,7 +147,8 @@ impl Cosmos {
     fn lift_glaciers(&mut self) -> Self {
         // will assume that colums are already simplified
         let mut glaciers = Cosmos::from(vec![Vec::<Layer>::new(); self.resolution.pow(2)]);
-        for datum in self.iter_exact() {
+        let res = self.resolution;
+        for datum in (0..res.pow(2)).map(|j| DatumZa::enravel(j, res)) {
             let mut j = 0;
             let index = datum.unravel(self.resolution);
             let column = &mut self.grid[index];
@@ -161,7 +164,8 @@ impl Cosmos {
     }
 
     fn drop_glaciers(&mut self, glaciers: &mut Self) {
-        for datum in self.iter_exact() {
+        let res = self.resolution;
+        for datum in (0..res.pow(2)).map(|j| DatumZa::enravel(j, res)) {
             let index = datum.unravel(self.resolution);
             self.grid[index].append(&mut glaciers.grid[index]);
         }
@@ -178,7 +182,8 @@ impl Cosmos {
     fn place_oceans(&mut self, ocean_elevation: &Brane<f64>) {
         let rock_elevation = self.elevation();
 
-        for datum in self.iter_exact() {
+        let res = self.resolution;
+        for datum in (0..res.pow(2)).map(|j| DatumZa::enravel(j, res)) {
             let rock_level = rock_elevation.read(&datum);
             let ocean_level = ocean_elevation.read(&datum);
             if rock_level < ocean_level {
@@ -194,9 +199,15 @@ impl Cosmos {
             let mut elevation_map = self.elevation();
             let surface_map = self.surface();
             self.discard_oceans();
-            elevation_map.grid = elevation_map
-                .par_iter_exact()
-                .map(|datum| reflow(&datum, &elevation_map, &surface_map))
+            elevation_map.grid = (0..elevation_map.resolution.pow(2))
+                .into_par_iter()
+                .map(|j| {
+                    reflow(
+                        &DatumZa::enravel(j, elevation_map.resolution),
+                        &elevation_map,
+                        &surface_map,
+                    )
+                })
                 .collect::<Vec<f64>>();
             self.place_oceans(&elevation_map);
         }
@@ -207,9 +218,14 @@ impl Cosmos {
         trace!("initialising bedrock for cosmic onion");
 
         let mut onion = Self::from(
-            bedrock
-                .par_iter_exact()
-                .map(|datum| vec![Layer::new(Fabric::Stone, bedrock.read(&datum))])
+            (0..bedrock.resolution.pow(2))
+                .into_par_iter()
+                .map(|j| {
+                    vec![Layer::new(
+                        Fabric::Stone,
+                        bedrock.read(&DatumZa::enravel(j, bedrock.resolution)),
+                    )]
+                })
                 .collect::<Vec<Vec<Layer>>>(),
         );
         onion.variable = "cosmos".to_string();
@@ -229,9 +245,10 @@ impl Cosmos {
     /// calculate the surface level model
     pub fn elevation(&self) -> Brane<f64> {
         let mut brane = Brane::from(
-            self.par_iter_exact()
-                .map(|datum| {
-                    self.iter_column(&datum)
+            (0..self.resolution.pow(2))
+                .into_par_iter()
+                .map(|j| {
+                    self.iter_column(&DatumZa::enravel(j, self.resolution))
                         .map(|layer| layer.depth)
                         .sum::<f64>()
                 })
@@ -246,9 +263,10 @@ impl Cosmos {
         trace!("calculating elevation gradient model");
 
         let mut flux = Flux::<f64>::from(&Brane::from(
-            self.par_iter_exact()
-                .map(|datum| {
-                    self.iter_column(&datum)
+            (0..self.resolution.pow(2))
+                .into_par_iter()
+                .map(|j| {
+                    self.iter_column(&DatumZa::enravel(j, self.resolution))
                         .filter(|layer| layer.fabric == Fabric::Stone)
                         .map(|layer| layer.depth)
                         .sum::<f64>()
@@ -262,8 +280,13 @@ impl Cosmos {
     /// calculate the surface type model
     pub fn surface(&self) -> Brane<Fabric> {
         let mut brane = Brane::from(
-            self.par_iter_exact()
-                .map(|datum| self.top(&datum).unwrap().fabric)
+            (0..self.resolution.pow(2))
+                .into_par_iter()
+                .map(|j| {
+                    self.top(&DatumZa::enravel(j, self.resolution))
+                        .unwrap()
+                        .fabric
+                })
                 .collect::<Vec<Fabric>>(),
         );
         brane.variable = "elevation".to_string();

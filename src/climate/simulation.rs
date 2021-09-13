@@ -42,8 +42,6 @@ fn single_loop(cosmos: &mut csm::Cosmos, resolution: usize, sol: f64) {
     // rivers and rainfall combined with temperature can give some way to include vegetation
     // which should enable a change in evaporation
     // a couple of round of this could lead to more erosion than without vegetation
-
-    cosmos.render(clr::TopographyInk::new(INIT_OCEAN_LEVEL));
 }
 
 #[allow(unused_variables)]
@@ -59,6 +57,8 @@ pub fn full_simulation(resolution: usize, seed: u32) {
     for _ in 0..1 {
         single_loop(&mut cosmos, resolution, 1.0);
     }
+
+    cosmos.render(clr::TopographyInk::new(INIT_OCEAN_LEVEL));
 
     // TODO: simulate glaciers
     // cut off some amount of heat

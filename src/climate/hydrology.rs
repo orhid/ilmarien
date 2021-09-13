@@ -53,9 +53,16 @@ pub fn evaporation(
     }
 
     let mut brane = Brane::from(
-        temperature
-            .par_iter()
-            .map(|datum| evaporation_dt(&datum, &pressure, &surface, &temperature))
+        (0..temperature.resolution.pow(2))
+            .into_par_iter()
+            .map(|j| {
+                evaporation_dt(
+                    &DatumZa::enravel(j, temperature.resolution).cast(temperature.resolution),
+                    &pressure,
+                    &surface,
+                    &temperature,
+                )
+            })
             .collect::<Vec<f64>>(),
     );
     brane.variable = "evaporation".to_string();
@@ -132,9 +139,15 @@ pub fn rainfall(elevation: &Brane<f64>, evaporation: &Brane<f64>, wind: &Flux<f6
     }
 
     for _ in 0..rainfall.resolution / 18 {
-        rainfall.grid = rainfall
-            .par_iter()
-            .map(|datum| diffuse_level(&datum, &rainfall, &elevation))
+        rainfall.grid = (0..rainfall.resolution.pow(2))
+            .into_par_iter()
+            .map(|j| {
+                diffuse_level(
+                    &DatumZa::enravel(j, rainfall.resolution).cast(rainfall.resolution),
+                    &rainfall,
+                    &elevation,
+                )
+            })
             .collect::<Vec<f64>>();
     }
     rainfall.variable = "rainfall".to_string();

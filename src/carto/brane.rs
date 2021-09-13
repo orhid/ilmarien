@@ -3,7 +3,7 @@ use crate::carto::{
     honeycomb::HoneyCellToroidal,
 };
 use log::{error, trace};
-use num_traits::identities::Zero;
+use num_traits::{identities::Zero, MulAdd};
 use rayon::prelude::*;
 use std::{
     fs,
@@ -54,64 +54,6 @@ impl<T> Brane<T> {
     /// returns neighbouring datums
     pub fn ambit_exact(&self, datum: &DatumZa) -> [DatumZa; 6] {
         datum.ambit_toroidal(self.resolution as i32)
-    }
-
-    /// produces an iterator over all coordinates in a brane of given resolution
-    /// not necessarily an existing brane, could be used later to create a brane from a computation
-    pub fn iter(resolution: usize) -> std::vec::IntoIter<DatumRe> {
-        (0..resolution.pow(2))
-            .map(|j| DatumZa::enravel(j, resolution).cast(resolution))
-            .collect::<Vec<DatumRe>>()
-            .into_iter()
-    }
-
-    /// produces a parallelised iterator over all coordinates in a brane of given resolution
-    /// not necessarily an existing brane, could be used later to create a brane from a computation
-    pub fn par_iter(resolution: usize) -> rayon::vec::IntoIter<DatumRe> {
-        (0..resolution.pow(2))
-            .map(|j| DatumZa::enravel(j, resolution).cast(resolution))
-            .collect::<Vec<DatumRe>>()
-            .into_par_iter()
-    }
-
-    /// produces an iterator over all exact coordinates in a brane
-    /// used mainly for rendering
-    pub fn iter_exact(&self) -> std::vec::IntoIter<DatumZa> {
-        (0..self.resolution.pow(2))
-            .map(|j| DatumZa::enravel(j, self.resolution))
-            .collect::<Vec<DatumZa>>()
-            .into_iter()
-    }
-
-    /// produces a parallelised iterator over all exact coordinates in a brane
-    /// used mainly for rendering
-    pub fn par_iter_exact(&self) -> rayon::vec::IntoIter<DatumZa> {
-        (0..self.resolution.pow(2))
-            .map(|j| DatumZa::enravel(j, self.resolution))
-            .collect::<Vec<DatumZa>>()
-            .into_par_iter()
-    }
-}
-
-// try to rethink all those iterators
-// collecting into a vec and then turning it into an iterator just has to be slower than something
-// more direct
-
-impl<T> IntoIterator for &Brane<T> {
-    type Item = DatumRe;
-    type IntoIter = std::vec::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        Brane::<T>::iter(self.resolution)
-    }
-}
-
-impl<T> IntoParallelIterator for &Brane<T> {
-    type Item = DatumRe;
-    type Iter = rayon::vec::IntoIter<Self::Item>;
-
-    fn into_par_iter(self) -> Self::Iter {
-        Brane::<T>::par_iter(self.resolution)
     }
 }
 
@@ -192,13 +134,16 @@ impl_op_external!(Sub, sub, -);
 impl_op_external!(Mul, mul, *);
 impl_op_external!(Div, div, /);
 
-impl<T: Add<Output = T> + Copy + Mul<Output = T>> Brane<T> {
+impl<T: MulAdd + Copy> Brane<T>
+where
+    Vec<T>: FromIterator<<T as MulAdd>::Output>,
+{
     pub fn mul_add(self, xmul: T, xadd: T) -> Self {
         Self {
             grid: self
                 .grid
                 .into_iter()
-                .map(|x| x * xmul + xadd)
+                .map(|x| x.mul_add(xmul, xadd))
                 .collect::<Vec<T>>(),
             resolution: self.resolution,
             variable: format!("muladd-{}", self.variable),
@@ -230,6 +175,8 @@ fn find_resolution(variable: &str) -> usize {
         .pop()
         .expect("found no brane for specified variable")
 }
+
+// saving and loading could probably be refactored with a macro
 
 impl Brane<u8> {
     /// save brane to a .tif file
@@ -528,7 +475,7 @@ mod test {
     }
 
     #[test]
-    fn brane_add() {
+    fn brane_add_self() {
         assert_eq!(
             (Brane::from(vec![0, 1, 2, 3]) + Brane::from(vec![1, 2, 3, 4])).grid,
             Brane::from(vec![1, 3, 5, 7]).grid
@@ -536,10 +483,26 @@ mod test {
     }
 
     #[test]
-    fn brane_sub() {
+    fn brane_sub_self() {
         assert_eq!(
             (Brane::from(vec![1, 2, 3, 4]) - Brane::from(vec![0, 1, 2, 3])).grid,
             Brane::from(vec![1, 1, 1, 1]).grid
+        );
+    }
+
+    #[test]
+    fn brane_add() {
+        assert_eq!(
+            (Brane::from(vec![1, 2, 3, 4]) + 2).grid,
+            Brane::from(vec![3, 4, 5, 6]).grid
+        );
+    }
+
+    #[test]
+    fn brane_sub() {
+        assert_eq!(
+            (Brane::from(vec![1, 2, 3, 4]) - 1).grid,
+            Brane::from(vec![0, 1, 2, 3]).grid
         );
     }
 
