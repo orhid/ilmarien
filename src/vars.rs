@@ -9,6 +9,7 @@ pub const TIME_LOCAL: f64 = 0.0032;
 /* ## cosmos */
 
 pub const INIT_OCEAN_LEVEL: f64 = 0.25; // initial ocean level
+pub const ICE_COMP: f64 = 3.24; // snow to ice compression rate
 
 /* ## geology */
 

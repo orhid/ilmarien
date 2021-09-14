@@ -8,9 +8,11 @@ use crate::{
 #[allow(unused_variables)]
 fn single_loop(cosmos: &mut csm::Cosmos, resolution: usize, sol: f64) {
     // temperature
-    let insolation = rad::insolation(resolution / 3, sol);
     let surface = cosmos.surface();
-    let temperature = rad::temperature(&insolation, &surface);
+    let temperature = rad::temperature(
+        &rad::insolation(if resolution > 216 { 144 } else { 72 }, sol),
+        &surface,
+    );
 
     cosmos.solidify_snow();
     let icemelt = cosmos.form_glaciers(&temperature);
@@ -24,12 +26,11 @@ fn single_loop(cosmos: &mut csm::Cosmos, resolution: usize, sol: f64) {
     let evaporation = hdr::evaporation(&pressure, &surface, &temperature);
     // TODO: subract water from oceans
     let elevation = cosmos.elevation();
-    let rainfall = hdr::rainfall(&elevation, &evaporation, &wind);
-    // TODO: accumulate snow where cold rain falls
+    let mut rainfall = hdr::rainfall(&elevation, &evaporation, &wind);
+    cosmos.snowfall(&mut rainfall, &temperature);
 
     let landflow = cosmos.landflow();
     // TODO: shed should accept a snowmelt layer
-    // moreover, rainfall should be diminished by snow accumulation
     let shed = hdr::shed(&landflow, &rainfall);
     // TODO: move sediment through water flow
     // TODO: replenish oceans with collected water

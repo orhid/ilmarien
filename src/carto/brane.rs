@@ -5,6 +5,7 @@ use crate::carto::{
 use log::{error, trace};
 use num_traits::{identities::Zero, MulAdd};
 use rayon::prelude::*;
+use splines::{Interpolation, Key, Spline};
 use std::{
     fs,
     iter::FromIterator,
@@ -57,6 +58,55 @@ impl<T> Brane<T> {
     }
 }
 
+impl Brane<f64> {
+    /// get a value interpolated from nearest coordinates
+    pub fn compute(&self, datum: &DatumRe) -> f64 {
+        let target = *datum * self.resolution as f64;
+        let corners = target.rhombus();
+        let values = corners.map(|datum| self.grid[datum.unravel_safe(self.resolution)]);
+        Spline::from_vec(vec![
+            Key::new(
+                corners[0].y as f64,
+                Spline::from_vec(vec![
+                    Key::new(corners[0].x as f64, values[0], Interpolation::Linear),
+                    Key::new(corners[1].x as f64, values[1], Interpolation::default()),
+                ])
+                .sample(target.x)
+                .unwrap(),
+                Interpolation::Linear,
+            ),
+            Key::new(
+                corners[3].y as f64,
+                Spline::from_vec(vec![
+                    Key::new(corners[2].x as f64, values[2], Interpolation::Linear),
+                    Key::new(corners[3].x as f64, values[3], Interpolation::default()),
+                ])
+                .sample(target.x)
+                .unwrap(),
+                Interpolation::default(),
+            ),
+        ])
+        .sample(target.y)
+        .unwrap()
+    }
+
+    /// upscale brane to a higher resolution
+    pub fn upscale(&self, target: usize) -> Self {
+        if self.resolution == target {
+            self.clone()
+        } else {
+            Self {
+                grid: (0..target.pow(2))
+                    .into_par_iter()
+                    .map(|j| self.compute(&DatumZa::enravel(j, target).cast(target)))
+                    .collect::<Vec<f64>>(),
+                resolution: target,
+                variable: self.variable.clone(),
+            }
+        }
+    }
+}
+
 impl<T: Clone> Brane<T> {
     /// read a value at given coordinate
     pub fn read(&self, datum: &DatumZa) -> T {
@@ -72,7 +122,7 @@ impl<T: Clone> Brane<T> {
 impl<T: Zero + Clone> Brane<T> {
     /// create a new brane filled with zeros
     pub fn zeros(resolution: usize) -> Self {
-        Brane {
+        Self {
             grid: vec![T::zero(); resolution.pow(2)],
             resolution,
             variable: "zeros".to_string(),
@@ -460,6 +510,28 @@ mod test {
             Brane::<f64>::from(&brane_u8).grid,
             brane_f64.grid,
             rmax <= vec![4.0 * EPSILON; 4]
+        );
+    }
+
+    #[test]
+    fn brane_upscale() {
+        let brane = Brane::from(vec![0.0, 1.0, 2.0, 3.0]);
+        let upscaled = brane.upscale(3);
+        assert_eq!(upscaled.grid.len(), 9);
+        assert_float_eq!(
+            upscaled.grid,
+            vec![
+                0.0,
+                2.0 / 3.0,
+                2.0 / 3.0,
+                4.0 / 3.0,
+                2.0,
+                2.0,
+                4.0 / 3.0,
+                2.0,
+                2.0
+            ],
+            abs <= vec![EPSILON; 9]
         );
     }
 

@@ -84,7 +84,7 @@ impl Cosmos {
         for column in &mut self.grid {
             if column.last().unwrap().fabric == Fabric::Snow {
                 let depth = column.pop().unwrap().depth;
-                column.push(Layer::new(Fabric::Ice, depth));
+                column.push(Layer::new(Fabric::Ice, depth / ICE_COMP));
             }
         }
     }
@@ -131,18 +131,21 @@ impl Cosmos {
         icemelt
     }
 
-    /*
     pub fn snowfall(&mut self, rainfall: &mut Brane<f64>, temperature: &Brane<f64>) {
+        trace!("calculating snowfall");
         let elev = self.elevation();
-        for datum in (0..self.resolution.pow(2)).map(|j| DatumZa::enravel(j, self.resolution)) {
+        let res = self.resolution;
+        for datum in (0..res.pow(2)).map(|j| DatumZa::enravel(j, res)) {
             let tempdif =
                 temperature.get(&datum.cast(self.resolution)) - lapse(elev.read(&datum)) - 273.0;
             if tempdif < 0.0 {
                 let index = datum.unravel(self.resolution);
+                let column = &mut self.grid[index];
+                column.push(Layer::new(Fabric::Snow, rainfall.grid[index] * EVA_RATE));
+                rainfall.grid[index] = 0.0;
             }
         }
     }
-    */
 
     fn lift_glaciers(&mut self) -> Self {
         // will assume that colums are already simplified
@@ -339,7 +342,22 @@ mod test {
         assert_eq!(cosmos.grid[0].len(), 2);
         assert_eq!(cosmos.grid[0][0].fabric, Fabric::Stone);
         assert_eq!(cosmos.grid[0][1].fabric, Fabric::Ice);
-        assert_float_eq!(cosmos.grid[0][1].depth, 1.0, abs <= EPSILON);
+        assert_float_eq!(cosmos.grid[0][1].depth, ICE_COMP.recip(), abs <= EPSILON);
+    }
+
+    #[test]
+    fn cosmos_snowfall() {
+        let mut cosmos = Brane::from(vec![
+            vec![Layer::new(Fabric::Stone, 0.24)],
+            vec![Layer::new(Fabric::Stone, 0.24)],
+            vec![Layer::new(Fabric::Stone, 0.24)],
+            vec![Layer::new(Fabric::Stone, 0.24)],
+        ]);
+        let mut rainfall = Brane::from(vec![1.0, 0.0, 1.0, 0.0]);
+        cosmos.snowfall(&mut rainfall, &Brane::from(vec![432.0, 306.0, 0.0, 256.0]));
+        assert_eq!(cosmos.grid[0].len(), 1);
+        assert_eq!(cosmos.grid[2].len(), 2);
+        assert_float_eq!(rainfall.grid[2], 0.0, abs <= EPSILON);
     }
 
     #[test]

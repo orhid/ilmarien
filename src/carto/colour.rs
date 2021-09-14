@@ -196,7 +196,12 @@ impl Ink<Vec<Layer>> for TopographyInk {
                     RGB::new(53, 89, 92).paint()
                 }
             }
-            Fabric::Snow | Fabric::Ice => RGB::new(255, 255, 255).paint(),
+            Fabric::Snow | Fabric::Ice => RGB::new(
+                (255.0 * elevation) as u8,
+                (255.0 * elevation) as u8,
+                (255.0 * elevation) as u8,
+            )
+            .paint(),
             _ => {
                 if elevation < self.ocean_level {
                     RGB::new(223, 235, 217).paint()

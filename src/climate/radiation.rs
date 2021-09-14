@@ -72,7 +72,7 @@ fn temperature_initialise(insolation: &Brane<f64>) -> Brane<f64> {
 fn temperature_diffuse(surface: &Brane<Fabric>, temperature: &mut Brane<f64>) {
     trace!("calculating temperature diffusion");
 
-    for j in 0..temperature.resolution * 12 {
+    for j in 0..temperature.resolution.pow(2) / 6 {
         temperature.grid = (0..temperature.resolution.pow(2))
             .into_par_iter()
             .map(|k| {
@@ -94,7 +94,7 @@ fn temperature_diffuse(surface: &Brane<Fabric>, temperature: &mut Brane<f64>) {
 pub fn temperature(insolation: &Brane<f64>, surface: &Brane<Fabric>) -> Brane<f64> {
     let mut temperature = temperature_initialise(insolation);
     temperature_diffuse(surface, &mut temperature);
-    temperature
+    temperature.upscale(surface.resolution)
 }
 
 /// calculate temperature lapse rate
@@ -163,9 +163,9 @@ mod test {
             &Brane::from((0..36).map(|j| j as f64).collect::<Vec<f64>>()),
             &Brane::from((0..36).map(|_| Fabric::Stone).collect::<Vec<Fabric>>()),
         );
-        assert_float_eq!(brane.grid[0], 5294.517604, abs <= EPSILON);
-        assert_float_eq!(brane.grid[8], 5279.538180, abs <= EPSILON);
-        assert_float_eq!(brane.grid[24], 5339.466849, abs <= EPSILON);
+        assert_float_eq!(brane.grid[0], 4178.0, abs <= EPSILON);
+        assert_float_eq!(brane.grid[8], 2234.0, abs <= EPSILON);
+        assert_float_eq!(brane.grid[24], 8066.0, abs <= EPSILON);
     }
 
     #[test]
