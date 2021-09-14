@@ -71,12 +71,19 @@ fn reflow_filter(here_lev: f64, nbr_lev: f64, here_sur: Fabric, nbr_sur: Fabric)
 
 pub fn reflow(datum: &DatumZa, fluid: &Brane<f64>, surface: &Brane<Fabric>) -> f64 {
     let herelev = fluid.read(&datum);
-    let heresur = surface.read(&datum);
+    let heresur = surface.get(&datum.cast(fluid.resolution));
     let ambit = fluid
         .ambit_exact(&datum)
         .to_vec()
         .into_iter()
-        .filter(|gon| reflow_filter(herelev, fluid.read(&gon), heresur, surface.read(&gon)))
+        .filter(|gon| {
+            reflow_filter(
+                herelev,
+                fluid.read(&gon),
+                heresur,
+                surface.get(&gon.cast(fluid.resolution)),
+            )
+        })
         .collect::<Vec<DatumZa>>();
     let len = ambit.len() as f64;
     if len > 0.0 {

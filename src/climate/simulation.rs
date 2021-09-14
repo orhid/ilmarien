@@ -24,19 +24,18 @@ fn single_loop(cosmos: &mut csm::Cosmos, resolution: usize, sol: f64) {
 
     // rainfall
     let evaporation = hdr::evaporation(&pressure, &surface, &temperature);
-    // TODO: subract water from oceans
+    cosmos.evaporate_oceans(&evaporation);
     let elevation = cosmos.elevation();
     let mut rainfall = hdr::rainfall(&elevation, &evaporation, &wind);
     cosmos.snowfall(&mut rainfall, &temperature);
 
     let landflow = cosmos.landflow();
-    // TODO: shed should accept a snowmelt layer
+    rainfall = rainfall + icemelt;
     let shed = hdr::shed(&landflow, &rainfall);
+    cosmos.replenish_oceans(&landflow, &shed);
     // TODO: move sediment through water flow
-    // TODO: replenish oceans with collected water
 
     // TODO: solidify sediment
-    cosmos.simplify_columns();
     cosmos.reflow_oceans();
 
     // TODO: simulate vegetation
@@ -54,11 +53,12 @@ pub fn full_simulation(resolution: usize, seed: u32) {
 
     //  initialise cosmic onion
     let mut cosmos = csm::Cosmos::initialise(&bedrock);
+    cosmos.render(clr::TopographyInk::new(INIT_OCEAN_LEVEL));
 
-    for _ in 0..1 {
+    for j in 0..6 {
         single_loop(&mut cosmos, resolution, 1.0);
     }
-
+    cosmos.variable = "cosmos-after".to_string();
     cosmos.render(clr::TopographyInk::new(INIT_OCEAN_LEVEL));
 
     // TODO: simulate glaciers

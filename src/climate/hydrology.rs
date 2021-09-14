@@ -31,11 +31,10 @@ fn evaporation_dt(
     surface: &Brane<Fabric>,
     temperature: &Brane<f64>,
 ) -> f64 {
+    let rate = evaporation_rate(pressure.get(&datum), temperature.get(&datum));
     match surface.get(&datum) {
-        Fabric::Water => evaporation_rate(pressure.get(&datum), temperature.get(&datum)),
-        Fabric::Ice | Fabric::Snow => {
-            0.24 * evaporation_rate(pressure.get(&datum), temperature.get(&datum))
-        }
+        Fabric::Water => rate,
+        Fabric::Ice | Fabric::Snow => 0.12 * rate,
         _ => 0.0,
     }
 }

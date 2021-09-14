@@ -136,12 +136,15 @@ impl Cosmos {
         let elev = self.elevation();
         let res = self.resolution;
         for datum in (0..res.pow(2)).map(|j| DatumZa::enravel(j, res)) {
-            let tempdif =
-                temperature.get(&datum.cast(self.resolution)) - lapse(elev.read(&datum)) - 273.0;
-            if tempdif < 0.0 {
+            if temperature.get(&datum.cast(self.resolution)) - lapse(elev.read(&datum)) - 273.0
+                < 0.0
+            {
                 let index = datum.unravel(self.resolution);
                 let column = &mut self.grid[index];
-                column.push(Layer::new(Fabric::Snow, rainfall.grid[index] * EVA_RATE));
+                column.push(Layer::new(
+                    Fabric::Snow,
+                    rainfall.grid[index] * EVA_RATE * ICE_COMP,
+                ));
                 rainfall.grid[index] = 0.0;
             }
         }
@@ -174,7 +177,33 @@ impl Cosmos {
         }
     }
 
-    fn discard_oceans(&mut self) {
+    pub fn evaporate_oceans(&mut self, evaporation: &Brane<f64>) {
+        let res = self.resolution;
+        for datum in (0..res.pow(2)).map(|j| DatumZa::enravel(j, res)) {
+            let index = datum.unravel(self.resolution);
+            let column = &mut self.grid[index];
+            match column.last().unwrap().fabric {
+                Fabric::Water | Fabric::Ice => {
+                    let mut top = column.pop().unwrap();
+                    top.depth = top.depth - evaporation.read(&datum) * EVA_RATE;
+                    if top.depth > 0.0 {
+                        column.push(top);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    pub fn replenish_oceans(&mut self, landflow: &Flux<f64>, shed: &Brane<f64>) {
+        for datum in landflow.roots.iter().map(|node| landflow.graph[*node]) {
+            let index = datum.unravel(self.resolution);
+            let column = &mut self.grid[index];
+            column.push(Layer::new(Fabric::Water, shed.read(&datum) * EVA_RATE));
+        }
+    }
+
+    pub fn discard_oceans(&mut self) {
         for column in &mut self.grid {
             if column.last().unwrap().fabric == Fabric::Water {
                 column.pop();
@@ -196,10 +225,19 @@ impl Cosmos {
     }
 
     pub fn reflow_oceans(&mut self) {
+        // this needs to be done somehow else
+        // current approach is either waaaaay to slow or does not work properly
         trace!("reflowing oceans");
+        self.simplify_columns();
         let mut glaciers = self.lift_glaciers();
         for _ in 0..self.resolution {
             let mut elevation_map = self.elevation();
+            elevation_map = Brane::from(
+                (0..72usize.pow(2))
+                    .into_par_iter()
+                    .map(|j| elevation_map.get(&DatumZa::enravel(j, 72).cast(72)))
+                    .collect::<Vec<f64>>(),
+            );
             let surface_map = self.surface();
             self.discard_oceans();
             elevation_map.grid = (0..elevation_map.resolution.pow(2))
@@ -212,9 +250,11 @@ impl Cosmos {
                     )
                 })
                 .collect::<Vec<f64>>();
+            elevation_map = elevation_map.upscale(self.resolution);
             self.place_oceans(&elevation_map);
         }
         self.drop_glaciers(&mut glaciers);
+        self.simplify_columns();
     }
 
     fn initialise_bedrock(bedrock: &Brane<f64>) -> Self {
@@ -322,8 +362,8 @@ mod test {
     fn cosmos_simplify_columns() {
         let mut cosmos = Brane::from(vec![vec![
             Layer::new(Fabric::Stone, 1.0),
-            Layer::new(Fabric::Stone, 1.0),
             Layer::new(Fabric::Ice, 1.0),
+            Layer::new(Fabric::Stone, 1.0),
         ]]);
         cosmos.simplify_columns();
         assert_eq!(cosmos.grid[0].len(), 2);
@@ -387,6 +427,28 @@ mod test {
         assert_eq!(cosmos.grid[3].len(), 3);
         assert_float_eq!(icemelt.grid[0], 0.00006 * EVA_RATE.recip(), abs <= EPSILON);
         assert!(icemelt.grid[1] > 0.0 && icemelt.grid[1] < 0.06 * EVA_RATE.recip());
+    }
+
+    #[test]
+    fn cosmos_evaporate_oceans() {
+        let mut cosmos = Brane::from(vec![
+            vec![
+                Layer::new(Fabric::Stone, 0.24),
+                Layer::new(Fabric::Water, EVA_RATE),
+            ],
+            vec![
+                Layer::new(Fabric::Stone, 0.24),
+                Layer::new(Fabric::Water, 0.06),
+            ],
+            vec![Layer::new(Fabric::Stone, 0.24)],
+            vec![Layer::new(Fabric::Stone, 0.24)],
+        ]);
+        cosmos.evaporate_oceans(&Brane::from(vec![1.0; 4]));
+        assert_eq!(cosmos.grid[0].len(), 1);
+        assert_eq!(cosmos.grid[1].len(), 2);
+        assert_eq!(cosmos.grid[2].len(), 1);
+        assert_eq!(cosmos.grid[3].len(), 1);
+        assert_float_eq!(cosmos.grid[1][1].depth, 0.06 - EVA_RATE, abs <= EPSILON);
     }
 
     #[test]
