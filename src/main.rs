@@ -15,7 +15,7 @@ fn test_short() {
 
 #[allow(dead_code)]
 fn test_sim() {
-    let res: usize = 144;
+    let res: usize = 216;
     let seed = 0;
 
     sim::full_simulation(res, seed);

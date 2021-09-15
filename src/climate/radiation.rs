@@ -56,16 +56,6 @@ fn temperature_initialise(insolation: &Brane<f64>) -> Brane<f64> {
     trace!("initialising temperature");
     // this should be doable without cloning, need to work on the implementation
     insolation.clone().mul_add(SOL_POWER, INIT_TEMP)
-    /*
-    let mut brane = Brane::from(
-        insolation
-            .par_iter()
-            .map(|datum| insolation.get(&datum).mul_add(SOL_POWER, INIT_TEMP))
-            .collect::<Vec<f64>>(),
-    );
-    brane.variable = "temperature".to_string();
-    brane
-        */
 }
 
 /// calculate temperature diffusion

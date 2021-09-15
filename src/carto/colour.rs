@@ -1,5 +1,8 @@
 use crate::{
-    climate::cosmos::{Fabric, Layer},
+    climate::{
+        cosmos::{Fabric, Layer},
+        koppen::Koppen,
+    },
     vars::*,
 };
 
@@ -223,6 +226,39 @@ impl Ink<Vec<Layer>> for TopographyInk {
                     RGB::new(115, 71, 67).paint()
                 }
             }
+        }
+    }
+}
+
+pub struct KoppenInk;
+
+impl Ink<Koppen> for KoppenInk {
+    fn paint(&self, sample: Koppen) -> String {
+        match sample {
+            Koppen::Af => RGB::new(34, 70, 122).paint(),
+            Koppen::Am => RGB::new(43, 94, 153).paint(),
+            Koppen::As => RGB::new(51, 122, 184).paint(),
+            Koppen::BWh => RGB::new(184, 104, 51).paint(),
+            Koppen::BWc => RGB::new(184, 51, 65).paint(),
+            Koppen::BSh => RGB::new(214, 145, 99).paint(),
+            Koppen::BSc => RGB::new(214, 99, 110).paint(),
+            Koppen::Cfa => RGB::new(184, 170, 51).paint(),
+            Koppen::Cfc => RGB::new(214, 201, 86).paint(),
+            Koppen::Csa => RGB::new(120, 153, 43).paint(),
+            Koppen::Csc => RGB::new(151, 184, 73).paint(),
+            Koppen::Cwa => RGB::new(52, 122, 34).paint(),
+            Koppen::Cwc => RGB::new(80, 153, 61).paint(),
+            Koppen::Dfa => RGB::new(43, 153, 109).paint(),
+            Koppen::Dfc => RGB::new(73, 184, 140).paint(),
+            Koppen::Dfd => RGB::new(111, 214, 173).paint(),
+            Koppen::Dsa => RGB::new(98, 43, 153).paint(),
+            Koppen::Dsc => RGB::new(129, 73, 184).paint(),
+            Koppen::Dsd => RGB::new(163, 111, 214).paint(),
+            Koppen::Dwa => RGB::new(122, 34, 87).paint(),
+            Koppen::Dwc => RGB::new(153, 61, 116).paint(),
+            Koppen::Dwd => RGB::new(184, 95, 148).paint(),
+            Koppen::EF => RGB::new(245, 218, 215).paint(),
+            Koppen::ET => RGB::new(235, 150, 159).paint(),
         }
     }
 }
