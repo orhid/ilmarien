@@ -67,7 +67,6 @@ struct KopParam {
     pub tmax: f64,
     pub tmed: f64,
     pub tmin: f64,
-    pub rmax: f64,
     pub rmed: f64,
     pub rmin: f64,
     pub rhot: f64,
@@ -75,22 +74,19 @@ struct KopParam {
 }
 
 impl KopParam {
-    fn rsum(&self) -> f64 {
-        self.rmax + self.rmin + 2.0 * self.rmed
-    }
-
     fn find_arid(&self) -> Arid {
-        let mut threshold = self.tmed * 1.0;
-        let step = 8.0;
-        if self.rhot + self.rmed > 0.64 * self.rsum() {
+        //let mut threshold = self.tmed * 0.84;
+        let mut threshold = self.tmed;
+        let step = 9.6;
+        if self.rhot > 1.44 * self.rmed {
             threshold += 2.0 * step;
-        } else if self.rhot + self.rmed > 0.36 * self.rsum() {
-            threshold += step;
+        } else if self.rhot > 1.08 * self.rmed {
+            threshold += 1.0 * step;
         }
 
-        if self.rsum() < 0.5 * threshold {
+        if self.rmed < 0.5 * threshold {
             Arid::Desert
-        } else if self.rsum() < threshold {
+        } else if self.rmed < threshold {
             Arid::Steppe
         } else {
             Arid::False
@@ -98,9 +94,9 @@ impl KopParam {
     }
 
     fn find_heat(&self) -> Heat {
-        if self.tmin > 19.0 {
+        if self.tmin > 18.0 {
             Heat::Tropical
-        } else if self.tmin < 10.0 {
+        } else if self.tmin < 8.0 {
             Heat::Continental
         } else {
             Heat::Maritime
@@ -118,7 +114,7 @@ impl KopParam {
     }
 
     fn class_temp(&self) -> Temp {
-        if self.tmax > 18.0 {
+        if self.tmax > 21.0 {
             Temp::SubTropical
         } else if self.tmin > 0.0 {
             Temp::Temperate
@@ -128,9 +124,9 @@ impl KopParam {
     }
 
     fn class_rain(&self) -> Rain {
-        if self.rcol > self.rhot * 0.84 {
+        if self.rcol > self.rhot * 1.08 {
             Rain::Highland
-        } else if self.rhot > self.rcol * 1.68 {
+        } else if self.rcol < self.rhot * 0.64 {
             Rain::Mediterranean
         } else {
             Rain::Oceanic
@@ -195,13 +191,12 @@ fn zone_dt(datum: &DatumZa, temps: &Vec<Brane<f64>>, rains: &Vec<Brane<f64>>) ->
         .collect::<Vec<f64>>();
     let loc_rains = rains
         .iter()
-        .map(|b| b.read(datum) * 54.0)
+        .map(|b| b.read(datum) * 162.0)
         .collect::<Vec<f64>>();
     KopParam {
         tmax: *loc_temps.iter().ord_subset_max().unwrap(),
         tmed: loc_temps.iter().sum::<f64>() / loc_temps.len() as f64,
         tmin: *loc_temps.iter().ord_subset_min().unwrap(),
-        rmax: *loc_rains.iter().ord_subset_max().unwrap(),
         rmed: loc_rains.iter().sum::<f64>() / loc_rains.len() as f64,
         rmin: *loc_rains.iter().ord_subset_min().unwrap(),
         rhot: loc_rains[loc_temps

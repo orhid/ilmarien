@@ -10,7 +10,7 @@ pub const TIME_LOCAL: f64 = 0.0032;
 
 pub const INIT_OCEAN_LEVEL: f64 = 0.25; // initial ocean level
 pub const ICE_COMP: f64 = 3.24; // snow to ice compression rate
-pub const SOL_AMP: f64 = 0.084; // maximal amplidute of solar deviation
+pub const SOL_DEV: f64 = 0.12; // amplidute of solar deviation
 
 /* ## geology */
 
@@ -23,9 +23,9 @@ pub const DST_FACTOR: f64 = 0.866025403784; // should slightly undistort terrain
 
 /* ## radiation */
 
-pub const SOL_DETAIL: i32 = 3; // radius of suns taken for insolation calculation
-pub const SOL_POWER: f64 = 324.0; // power of solar radiation
-pub const INIT_TEMP: f64 = -358.0; // initial world temperature
+pub const SOL_DETAIL: i32 = 12; // radius of suns taken for insolation calculation
+pub const SOL_POWER: f64 = 432.0; // power of solar radiation
+pub const INIT_TEMP: f64 = -708.0; // initial world temperature
 pub const MID_TEMP: f64 = 273.0; // initial world temperature
 
 pub const INIT_PRES: f64 = 0.5; // initial surface pressure

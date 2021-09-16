@@ -137,7 +137,7 @@ pub fn rainfall(elevation: &Brane<f64>, evaporation: &Brane<f64>, wind: &Flux<f6
         rainfall.grid[wind.graph[*node].unravel(rainfall.resolution)] += residues[j];
     }
 
-    for _ in 0..rainfall.resolution / 18 {
+    for _ in 0..rainfall.resolution.pow(2) / 324 {
         rainfall.grid = (0..rainfall.resolution.pow(2))
             .into_par_iter()
             .map(|j| {

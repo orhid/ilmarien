@@ -5,14 +5,34 @@ use crate::{
     vars::*,
 };
 
+#[derive(PartialEq)]
+enum Time {
+    Cosmic,
+    Local,
+}
+
 #[allow(unused_variables)]
-fn single_loop(cosmos: &mut csm::Cosmos, resolution: usize, sol: f64) -> (Brane<f64>, Brane<f64>) {
+fn single_loop(
+    cosmos: &mut csm::Cosmos,
+    resolution: usize,
+    sol: f64,
+    scale: Time,
+) -> (Brane<f64>, Brane<f64>) {
     // temperature
     let surface = cosmos.surface();
-    let temperature = rad::temperature(
+    let mut temperature = rad::temperature(
         &rad::insolation(if resolution > 216 { 144 } else { 72 }, sol),
         &surface,
     );
+    if scale == Time::Cosmic {
+        temperature = (rad::temperature(
+            &rad::insolation(if resolution > 216 { 144 } else { 72 }, SOL_DEV),
+            &surface,
+        ) + rad::temperature(
+            &rad::insolation(if resolution > 216 { 144 } else { 72 }, -SOL_DEV),
+            &surface,
+        )) * 0.5;
+    }
 
     cosmos.solidify_snow();
     let icemelt = cosmos.form_glaciers(&temperature);
@@ -55,9 +75,11 @@ pub fn full_simulation(resolution: usize, seed: u32) {
 
     //  initialise cosmic onion
     let mut cosmos = csm::Cosmos::initialise(&bedrock);
+    cosmos.variable = format!("cosmos-{}", seed);
+    cosmos.render(clr::TopographyInk::new(INIT_OCEAN_LEVEL));
 
-    for _ in 0..12 {
-        single_loop(&mut cosmos, resolution, 1.0);
+    for _ in 0..6 {
+        single_loop(&mut cosmos, resolution, 0.0, Time::Cosmic);
     }
 
     // TODO: simulate glaciers
@@ -65,28 +87,19 @@ pub fn full_simulation(resolution: usize, seed: u32) {
     // run loop again,existing models should be able to produce glaciers
     // increase heat and run loop again, this should melt some glaciers
 
-    let cycle = 24;
+    let cycle = 12;
     let mut temps = Vec::new();
     let mut rains = Vec::new();
-    for sol in
-        (0..cycle).map(|c| 1.00 + SOL_AMP * (std::f64::consts::TAU * c as f64 / cycle as f64).sin())
+    //for sol in (0..cycle).map(|c| ((c as f64 / cycle as f64) - 0.5).rem_euclid(1.0) - 0.5) {
+    for sol in (0..cycle).map(|c| SOL_DEV * (std::f64::consts::TAU * c as f64 / cycle as f64).sin())
     {
-        let (t, r) = single_loop(&mut cosmos, resolution, sol);
+        let (t, r) = single_loop(&mut cosmos, resolution, sol, Time::Local);
         temps.push(t);
         rains.push(r);
     }
 
-    // seasonal variation is too small,
-    // but increasing the amplitude swings the tempratures to wayy to extreme values,
-    // I believe that temperature variation inside the continents needs to be increased,
-    // we might have to deal with radiation and absorbtion, not just insolation
-    cosmos.render(clr::TopographyInk::new(INIT_OCEAN_LEVEL));
-    temps[0].stats();
-    temps[5].stats();
-    temps[11].stats();
-    temps[17].stats();
-    rains[0].render(clr::HueInk::new(0.54, 0.96));
-    let zones = kpn::zone(&temps, &rains);
+    let mut zones = kpn::zone(&temps, &rains);
+    zones.variable = format!("koppen-{}", seed);
     zones.render(clr::KoppenInk);
 
     // TODO: simulate seasons after the calamity, when the sun becomes unstable

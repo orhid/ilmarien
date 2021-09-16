@@ -6,7 +6,7 @@ use crate::{
         honeycomb::{Hexagon, HoneyCellPlanar},
     },
     climate::cosmos::Fabric,
-    util::diffusion::{diffuse_medium, Medium},
+    util::diffusion::diffuse_plain,
     vars::*,
 };
 use log::trace;
@@ -28,10 +28,22 @@ fn insolation_sol(datum: &DatumRe, sol: [f64; 3]) -> f64 {
 }
 
 fn insolation_dt(datum: &DatumRe, solar_pos: f64) -> f64 {
-    DatumZa::from(*datum)
+    DatumZa { x: 0, y: 0 }
         .ball_planar(SOL_DETAIL)
         .into_iter()
-        .map(|sol| insolation_sol(datum, vector_elevation(&DatumRe::from(sol), solar_pos)))
+        .map(|sol| {
+            insolation_sol(
+                datum,
+                vector_elevation(
+                    &(DatumRe::from(sol)
+                        + DatumRe {
+                            x: 0.0,
+                            y: solar_pos,
+                        }),
+                    1.0, // + SOL_DEV * solar_pos * (solar_pos - 1.0),
+                ),
+            )
+        })
         .sum::<f64>()
 }
 
@@ -58,20 +70,33 @@ fn temperature_initialise(insolation: &Brane<f64>) -> Brane<f64> {
     insolation.clone().mul_add(SOL_POWER, INIT_TEMP)
 }
 
+fn temperature_oceanise(surface: &Brane<Fabric>, temperature: &mut Brane<f64>) {
+    let oceans = (0..temperature.resolution.pow(2))
+        .into_par_iter()
+        .map(|j| DatumZa::enravel(j, temperature.resolution).cast(temperature.resolution))
+        .filter(|datum| surface.get(&datum) == Fabric::Water)
+        .map(|datum| temperature.get(&datum))
+        .collect::<Vec<f64>>();
+    let tavg = oceans.iter().sum::<f64>() / oceans.len() as f64;
+    for j in 0..temperature.resolution.pow(2) {
+        if surface.get(&DatumZa::enravel(j, temperature.resolution).cast(temperature.resolution))
+            == Fabric::Water
+        {
+            temperature.grid[j] = temperature.grid[j] * 0.144 + tavg * 0.856;
+        }
+    }
+}
+
 /// calculate temperature diffusion
 fn temperature_diffuse(surface: &Brane<Fabric>, temperature: &mut Brane<f64>) {
     trace!("calculating temperature diffusion");
 
-    for j in 0..temperature.resolution.pow(2) / 6 {
+    for _ in 0..temperature.resolution.pow(2) / 54 {
         temperature.grid = (0..temperature.resolution.pow(2))
             .into_par_iter()
             .map(|k| {
-                diffuse_medium(
+                diffuse_plain(
                     &DatumZa::enravel(k, temperature.resolution).cast(temperature.resolution),
-                    match j % 6 {
-                        0 => Medium::Air,
-                        _ => Medium::Ocean,
-                    },
                     temperature,
                     surface,
                 )
@@ -83,6 +108,7 @@ fn temperature_diffuse(surface: &Brane<Fabric>, temperature: &mut Brane<f64>) {
 /// calculate average temperature
 pub fn temperature(insolation: &Brane<f64>, surface: &Brane<Fabric>) -> Brane<f64> {
     let mut temperature = temperature_initialise(insolation);
+    temperature_oceanise(surface, &mut temperature);
     temperature_diffuse(surface, &mut temperature);
     temperature.upscale(surface.resolution)
 }
@@ -136,15 +162,15 @@ mod test {
 
     #[test]
     fn insolation_values() {
-        let brane = insolation(6, 1.0);
-        assert_float_eq!(brane.grid[0], 2.224531, abs <= EPSILON);
-        assert_float_eq!(brane.grid[8], 1.913083, abs <= EPSILON);
-        assert_float_eq!(brane.grid[24], 1.982061, abs <= EPSILON);
+        let brane = insolation(6, 0.0);
+        assert_float_eq!(brane.grid[0], 2.529651, abs <= EPSILON);
+        assert_float_eq!(brane.grid[8], 2.223781, abs <= EPSILON);
+        assert_float_eq!(brane.grid[24], 2.290107, abs <= EPSILON);
 
-        let brane = insolation(6, 1.2);
-        assert_float_ne!(brane.grid[0], 2.224531, abs <= EPSILON);
-        assert_float_ne!(brane.grid[8], 1.913083, abs <= EPSILON);
-        assert_float_ne!(brane.grid[24], 1.982061, abs <= EPSILON);
+        let brane = insolation(6, 0.5);
+        assert_float_ne!(brane.grid[0], 2.529651, abs <= EPSILON);
+        assert_float_ne!(brane.grid[8], 2.223781, abs <= EPSILON);
+        assert_float_ne!(brane.grid[24], 2.290107, abs <= EPSILON);
     }
 
     #[test]
@@ -153,9 +179,9 @@ mod test {
             &Brane::from((0..36).map(|j| j as f64).collect::<Vec<f64>>()),
             &Brane::from((0..36).map(|_| Fabric::Stone).collect::<Vec<Fabric>>()),
         );
-        assert_float_eq!(brane.grid[0], 4178.0, abs <= EPSILON);
-        assert_float_eq!(brane.grid[8], 2234.0, abs <= EPSILON);
-        assert_float_eq!(brane.grid[24], 8066.0, abs <= EPSILON);
+        assert_float_eq!(brane.grid[0], -708.0, abs <= EPSILON);
+        assert_float_eq!(brane.grid[8], 2748.0, abs <= EPSILON);
+        assert_float_eq!(brane.grid[24], 9660.0, abs <= EPSILON);
     }
 
     #[test]

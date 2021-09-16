@@ -6,6 +6,19 @@ use crate::{
     climate::cosmos::Fabric,
 };
 
+pub fn diffuse_plain(datum: &DatumRe, fluid: &Brane<f64>, surface: &Brane<Fabric>) -> f64 {
+    if surface.get(&datum) != Fabric::Water {
+        fluid
+            .ambit(&datum)
+            .iter()
+            .map(|gon| fluid.get(gon))
+            .sum::<f64>()
+            / 6.0
+    } else {
+        fluid.get(&datum)
+    }
+}
+
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum Medium {
     Air,
