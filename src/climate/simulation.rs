@@ -4,6 +4,7 @@ use crate::{
     climate::{cosmos as csm, geology as glg, hydrology as hdr, koppen as kpn, radiation as rad},
     vars::*,
 };
+use log::info;
 
 #[derive(PartialEq)]
 enum Time {
@@ -101,6 +102,7 @@ pub fn full_simulation(resolution: usize, seed: u32) {
     let mut zones = kpn::zone(&temps, &rains);
     zones.variable = format!("koppen-{}", seed);
     zones.render(clr::KoppenInk);
+    info!("finished simulation with seed {}", seed);
 
     // TODO: simulate seasons after the calamity, when the sun becomes unstable
     // this will lead to more diverse climate zones and ultimately better vegetation
