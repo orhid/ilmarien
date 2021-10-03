@@ -1,11 +1,6 @@
 use crate::{
-    carto::{
-        brane::{Brane, Onion},
-        datum::DatumZa,
-        flux::Flux,
-    },
-    climate::radiation::lapse,
-    util::diffusion::reflow,
+    carto::{brane::Brane, datum::DatumZa, flux::Flux},
+    climate::{koppen::KopParam, radiation::lapse},
     vars::*,
 };
 use log::trace;
@@ -44,47 +39,74 @@ impl From<u8> for Fabric {
     }
 }
 
-/* # layers */
+/* # pillars */
 
-#[derive(Clone, PartialEq, PartialOrd)]
-pub struct Layer {
-    pub fabric: Fabric,
-    pub depth: f64,
+#[derive(Clone, PartialEq, Debug)]
+pub struct Pillar {
+    pub bedrock: f64,
+    pub ocean: f64,
+    pub ice: f64,
+    pub snow: f64,
+    pub vege: u8, // this will be an enum
+    pub kp: KopParam,
 }
 
-impl Layer {
-    pub fn new(fabric: Fabric, depth: f64) -> Self {
-        Self { fabric, depth }
-    }
-}
-
-/* # cosmic onion */
-
-pub type Cosmos = Onion<Layer>;
-
-impl Cosmos {
-    pub fn simplify_columns(&mut self) {
-        self.sort_columns();
-        for column in &mut self.grid {
-            let mut j = 0;
-            while j < column.len() - 1 {
-                if column[j].fabric == column[j + 1].fabric {
-                    column[j] = Layer::new(
-                        column[j].fabric,
-                        column[j].depth + column.remove(j + 1).depth,
-                    );
-                } else {
-                    j += 1;
-                }
-            }
+impl Pillar {
+    fn zero() -> Self {
+        Self {
+            bedrock: 0.0,
+            ocean: 0.0,
+            ice: 0.0,
+            snow: 0.0,
+            vege: 0,
+            kp: KopParam::zero(),
         }
     }
 
+    fn bedrock(bedrock: f64) -> Self {
+        Self {
+            bedrock,
+            ocean: 0.0,
+            ice: 0.0,
+            snow: 0.0,
+            vege: 0,
+            kp: KopParam::zero(),
+        }
+    }
+
+    fn elevation(&self) -> f64 {
+        self.bedrock + self.ocean + self.ice + self.snow
+    }
+
+    fn land_elevation(&self) -> f64 {
+        self.bedrock + self.ice + self.snow
+    }
+}
+
+impl From<&Pillar> for Fabric {
+    fn from(pillar: &Pillar) -> Self {
+        if pillar.snow > 0.0 {
+            Fabric::Snow
+        } else if pillar.ice > 0.0 {
+            Fabric::Ice
+        } else if pillar.ocean > 0.0 {
+            Fabric::Water
+        } else {
+            Fabric::Stone
+        }
+    }
+}
+
+/* # cosmos */
+
+pub type Cosmos = Brane<Pillar>;
+
+impl Cosmos {
     pub fn solidify_snow(&mut self) {
-        for column in &mut self.grid {
-            if column.last().unwrap().fabric == Fabric::Snow {
-                let depth = column.pop().unwrap().depth;
-                column.push(Layer::new(Fabric::Ice, depth / ICE_COMP));
+        for pillar in &mut self.grid {
+            if pillar.snow > 0.0 {
+                pillar.ice += pillar.snow * ICE_COMP.recip();
+                pillar.snow = 0.0;
             }
         }
     }
@@ -98,34 +120,22 @@ impl Cosmos {
             let tempdif =
                 temperature.get(&datum.cast(self.resolution)) - lapse(elev.read(&datum)) - 273.0;
             let index = datum.unravel(self.resolution);
-            let column = &mut self.grid[index];
+            let pillar = &mut self.grid[index];
             let mut potential = tempdif.abs().sqrt() * EVA_RATE;
             if tempdif > 0.0 {
-                if column.last().unwrap().fabric == Fabric::Ice {
-                    let mut ice = column.pop().unwrap();
-                    if ice.depth > potential {
-                        ice.depth -= potential;
-                        column.push(ice.clone());
-                    } else {
-                        potential = ice.depth;
-                    }
-                    icemelt.grid[index] = potential * EVA_RATE.recip();
+                if pillar.ice > potential {
+                    pillar.ice -= potential;
+                } else {
+                    potential = pillar.ice;
                 }
+                icemelt.grid[index] = potential * EVA_RATE.recip();
             } else {
-                let mut oldice = 0.0;
-                if column.last().unwrap().fabric == Fabric::Ice {
-                    oldice = column.pop().unwrap().depth;
+                if pillar.ocean > potential {
+                    pillar.ocean -= potential;
+                } else {
+                    potential = pillar.ocean;
                 }
-                if column.last().unwrap().fabric == Fabric::Water {
-                    let mut water = column.pop().unwrap();
-                    if water.depth > potential {
-                        water.depth -= potential;
-                        column.push(water.clone());
-                    } else {
-                        potential = water.depth;
-                    }
-                    column.push(Layer::new(Fabric::Ice, potential + oldice));
-                }
+                pillar.ice += potential;
             }
         }
         icemelt
@@ -140,73 +150,8 @@ impl Cosmos {
                 < 0.0
             {
                 let index = datum.unravel(self.resolution);
-                let column = &mut self.grid[index];
-                column.push(Layer::new(
-                    Fabric::Snow,
-                    rainfall.grid[index] * EVA_RATE * ICE_COMP,
-                ));
+                self.grid[index].snow += rainfall.grid[index] * EVA_RATE * ICE_COMP;
                 rainfall.grid[index] = 0.0;
-            }
-        }
-    }
-
-    fn lift_glaciers(&mut self) -> Self {
-        // will assume that colums are already simplified
-        let mut glaciers = Cosmos::from(vec![Vec::<Layer>::new(); self.resolution.pow(2)]);
-        let res = self.resolution;
-        for datum in (0..res.pow(2)).map(|j| DatumZa::enravel(j, res)) {
-            let mut j = 0;
-            let index = datum.unravel(self.resolution);
-            let column = &mut self.grid[index];
-            while j < column.len() - 1 {
-                if column[j].fabric == Fabric::Ice || column[j].fabric == Fabric::Snow {
-                    glaciers.grid[index] = column.split_off(j);
-                    break;
-                }
-                j += 1;
-            }
-        }
-        glaciers
-    }
-
-    fn drop_glaciers(&mut self, glaciers: &mut Self) {
-        let res = self.resolution;
-        for datum in (0..res.pow(2)).map(|j| DatumZa::enravel(j, res)) {
-            let index = datum.unravel(self.resolution);
-            self.grid[index].append(&mut glaciers.grid[index]);
-        }
-    }
-
-    pub fn evaporate_oceans(&mut self, evaporation: &Brane<f64>) {
-        let res = self.resolution;
-        for datum in (0..res.pow(2)).map(|j| DatumZa::enravel(j, res)) {
-            let index = datum.unravel(self.resolution);
-            let column = &mut self.grid[index];
-            match column.last().unwrap().fabric {
-                Fabric::Water | Fabric::Ice => {
-                    let mut top = column.pop().unwrap();
-                    top.depth = top.depth - evaporation.read(&datum) * EVA_RATE;
-                    if top.depth > 0.0 {
-                        column.push(top);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
-    pub fn replenish_oceans(&mut self, landflow: &Flux<f64>, shed: &Brane<f64>) {
-        for datum in landflow.roots.iter().map(|node| landflow.graph[*node]) {
-            let index = datum.unravel(self.resolution);
-            let column = &mut self.grid[index];
-            column.push(Layer::new(Fabric::Water, shed.read(&datum) * EVA_RATE));
-        }
-    }
-
-    pub fn discard_oceans(&mut self) {
-        for column in &mut self.grid {
-            if column.last().unwrap().fabric == Fabric::Water {
-                column.pop();
             }
         }
     }
@@ -219,42 +164,9 @@ impl Cosmos {
             let rock_level = rock_elevation.read(&datum);
             let ocean_level = ocean_elevation.read(&datum);
             if rock_level < ocean_level {
-                self.push(&datum, Layer::new(Fabric::Water, ocean_level - rock_level));
+                self.grid[datum.unravel(res)].ocean = ocean_level - rock_level;
             }
         }
-    }
-
-    pub fn reflow_oceans(&mut self) {
-        // this needs to be done somehow else
-        // current approach is either waaaaay to slow or does not work properly
-        trace!("reflowing oceans");
-        self.simplify_columns();
-        let mut glaciers = self.lift_glaciers();
-        for _ in 0..self.resolution {
-            let mut elevation_map = self.elevation();
-            elevation_map = Brane::from(
-                (0..72usize.pow(2))
-                    .into_par_iter()
-                    .map(|j| elevation_map.get(&DatumZa::enravel(j, 72).cast(72)))
-                    .collect::<Vec<f64>>(),
-            );
-            let surface_map = self.surface();
-            self.discard_oceans();
-            elevation_map.grid = (0..elevation_map.resolution.pow(2))
-                .into_par_iter()
-                .map(|j| {
-                    reflow(
-                        &DatumZa::enravel(j, elevation_map.resolution),
-                        &elevation_map,
-                        &surface_map,
-                    )
-                })
-                .collect::<Vec<f64>>();
-            elevation_map = elevation_map.upscale(self.resolution);
-            self.place_oceans(&elevation_map);
-        }
-        self.drop_glaciers(&mut glaciers);
-        self.simplify_columns();
     }
 
     fn initialise_bedrock(bedrock: &Brane<f64>) -> Self {
@@ -263,13 +175,8 @@ impl Cosmos {
         let mut onion = Self::from(
             (0..bedrock.resolution.pow(2))
                 .into_par_iter()
-                .map(|j| {
-                    vec![Layer::new(
-                        Fabric::Stone,
-                        bedrock.read(&DatumZa::enravel(j, bedrock.resolution)),
-                    )]
-                })
-                .collect::<Vec<Vec<Layer>>>(),
+                .map(|j| Pillar::bedrock(bedrock.read(&DatumZa::enravel(j, bedrock.resolution))))
+                .collect::<Vec<Pillar>>(),
         );
         onion.variable = "cosmos".to_string();
         onion
@@ -290,11 +197,7 @@ impl Cosmos {
         let mut brane = Brane::from(
             (0..self.resolution.pow(2))
                 .into_par_iter()
-                .map(|j| {
-                    self.iter_column(&DatumZa::enravel(j, self.resolution))
-                        .map(|layer| layer.depth)
-                        .sum::<f64>()
-                })
+                .map(|j| self.grid[j].elevation())
                 .collect::<Vec<f64>>(),
         );
         brane.variable = "elevation".to_string();
@@ -308,12 +211,7 @@ impl Cosmos {
         let mut flux = Flux::<f64>::from(&Brane::from(
             (0..self.resolution.pow(2))
                 .into_par_iter()
-                .map(|j| {
-                    self.iter_column(&DatumZa::enravel(j, self.resolution))
-                        .filter(|layer| layer.fabric == Fabric::Stone)
-                        .map(|layer| layer.depth)
-                        .sum::<f64>()
-                })
+                .map(|j| self.grid[j].land_elevation())
                 .collect::<Vec<f64>>(),
         ));
         flux.variable = "elevation".to_string();
@@ -325,11 +223,7 @@ impl Cosmos {
         let mut brane = Brane::from(
             (0..self.resolution.pow(2))
                 .into_par_iter()
-                .map(|j| {
-                    self.top(&DatumZa::enravel(j, self.resolution))
-                        .unwrap()
-                        .fabric
-                })
+                .map(|j| Fabric::from(&self.grid[j]))
                 .collect::<Vec<Fabric>>(),
         );
         brane.variable = "elevation".to_string();
@@ -353,38 +247,18 @@ mod test {
         assert!(Fabric::Stone < Fabric::Water);
         assert!(Fabric::Water < Fabric::Ice);
         assert!(Fabric::Ice < Fabric::Snow);
-
-        assert!(Layer::new(Fabric::Stone, 1.0) < Layer::new(Fabric::Water, 0.5));
-        assert!(Layer::new(Fabric::Stone, 0.5) < Layer::new(Fabric::Stone, 1.0));
-    }
-
-    #[test]
-    fn cosmos_simplify_columns() {
-        let mut cosmos = Brane::from(vec![vec![
-            Layer::new(Fabric::Stone, 1.0),
-            Layer::new(Fabric::Ice, 1.0),
-            Layer::new(Fabric::Stone, 1.0),
-        ]]);
-        cosmos.simplify_columns();
-        assert_eq!(cosmos.grid[0].len(), 2);
-        assert_eq!(cosmos.grid[0][0].fabric, Fabric::Stone);
-        assert_eq!(cosmos.grid[0][1].fabric, Fabric::Ice);
-        assert_float_eq!(cosmos.grid[0][0].depth, 2.0, abs <= EPSILON);
     }
 
     #[test]
     fn cosmos_solidify_snow() {
-        let mut cosmos = Brane::from(vec![vec![
-            Layer::new(Fabric::Stone, 1.0),
-            Layer::new(Fabric::Snow, 1.0),
-        ]]);
+        let mut cosmos = Brane::from(vec![Pillar::zero()]);
+        cosmos.grid[0].snow = 1.0;
         cosmos.solidify_snow();
-        assert_eq!(cosmos.grid[0].len(), 2);
-        assert_eq!(cosmos.grid[0][0].fabric, Fabric::Stone);
-        assert_eq!(cosmos.grid[0][1].fabric, Fabric::Ice);
-        assert_float_eq!(cosmos.grid[0][1].depth, ICE_COMP.recip(), abs <= EPSILON);
+        assert_float_eq!(cosmos.grid[0].snow, 0.0, abs <= EPSILON);
+        assert_float_eq!(cosmos.grid[0].ice, ICE_COMP.recip(), abs <= EPSILON);
     }
 
+    /*
     #[test]
     fn cosmos_snowfall() {
         let mut cosmos = Brane::from(vec![
@@ -428,45 +302,7 @@ mod test {
         assert_float_eq!(icemelt.grid[0], 0.00006 * EVA_RATE.recip(), abs <= EPSILON);
         assert!(icemelt.grid[1] > 0.0 && icemelt.grid[1] < 0.06 * EVA_RATE.recip());
     }
-
-    #[test]
-    fn cosmos_evaporate_oceans() {
-        let mut cosmos = Brane::from(vec![
-            vec![
-                Layer::new(Fabric::Stone, 0.24),
-                Layer::new(Fabric::Water, EVA_RATE),
-            ],
-            vec![
-                Layer::new(Fabric::Stone, 0.24),
-                Layer::new(Fabric::Water, 0.06),
-            ],
-            vec![Layer::new(Fabric::Stone, 0.24)],
-            vec![Layer::new(Fabric::Stone, 0.24)],
-        ]);
-        cosmos.evaporate_oceans(&Brane::from(vec![1.0; 4]));
-        assert_eq!(cosmos.grid[0].len(), 1);
-        assert_eq!(cosmos.grid[1].len(), 2);
-        assert_eq!(cosmos.grid[2].len(), 1);
-        assert_eq!(cosmos.grid[3].len(), 1);
-        assert_float_eq!(cosmos.grid[1][1].depth, 0.06 - EVA_RATE, abs <= EPSILON);
-    }
-
-    #[test]
-    fn cosmos_lift_drop_glaciers() {
-        let mut cosmos = Brane::from(vec![vec![
-            Layer::new(Fabric::Stone, 1.0),
-            Layer::new(Fabric::Ice, 1.0),
-            Layer::new(Fabric::Snow, 1.0),
-        ]]);
-        let mut glaciers = cosmos.lift_glaciers();
-        assert_eq!(cosmos.grid[0].len(), 1);
-        assert_eq!(cosmos.grid[0][0].fabric, Fabric::Stone);
-        cosmos.drop_glaciers(&mut glaciers);
-        assert_eq!(cosmos.grid[0].len(), 3);
-        assert_eq!(cosmos.grid[0][0].fabric, Fabric::Stone);
-        assert_eq!(cosmos.grid[0][1].fabric, Fabric::Ice);
-        assert_eq!(cosmos.grid[0][2].fabric, Fabric::Snow);
-    }
+    */
 
     #[test]
     fn initialise_bedrock_values() {
@@ -484,7 +320,6 @@ mod test {
     #[test]
     fn initialise_values() {
         let cosmos = Cosmos::initialise(&Brane::from(vec![0.0, 0.25, 0.5, 0.75]));
-        assert_eq!(cosmos.grid[0].len(), 2);
         let elevation = cosmos.elevation();
         assert_float_eq!(elevation.grid[0], 0.25, abs <= EPSILON);
         assert_float_eq!(elevation.grid[1], 0.25, abs <= EPSILON);

@@ -63,7 +63,8 @@ enum Rain {
     Mediterranean,
 }
 
-struct KopParam {
+#[derive(Clone, Debug, PartialEq)]
+pub struct KopParam {
     pub tmax: f64,
     pub tmed: f64,
     pub tmin: f64,
@@ -74,6 +75,18 @@ struct KopParam {
 }
 
 impl KopParam {
+    pub fn zero() -> Self {
+        Self {
+            tmax: 0.0,
+            tmed: 0.0,
+            tmin: 0.0,
+            rmed: 0.0,
+            rmin: 0.0,
+            rhot: 0.0,
+            rcol: 0.0,
+        }
+    }
+
     fn find_arid(&self) -> Arid {
         //let mut threshold = self.tmed * 0.84;
         let mut threshold = self.tmed;

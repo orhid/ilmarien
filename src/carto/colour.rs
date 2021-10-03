@@ -1,8 +1,5 @@
 use crate::{
-    climate::{
-        cosmos::{Fabric, Layer},
-        koppen::Koppen,
-    },
+    climate::{cosmos::Fabric, koppen::Koppen},
     vars::*,
 };
 
@@ -173,6 +170,7 @@ impl Ink<f64> for ElevationInk {
     }
 }
 
+/*
 pub struct TopographyInk {
     ocean_level: f64,
 }
@@ -229,6 +227,7 @@ impl Ink<Vec<Layer>> for TopographyInk {
         }
     }
 }
+*/
 
 pub struct KoppenInk;
 

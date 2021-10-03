@@ -57,7 +57,7 @@ fn single_loop(
     // TODO: move sediment through water flow
 
     // TODO: solidify sediment
-    cosmos.simplify_columns();
+    // cosmos.simplify_columns();
     // cosmos.reflow_oceans();
 
     // TODO: simulate vegetation
@@ -77,7 +77,7 @@ pub fn full_simulation(resolution: usize, seed: u32) {
     //  initialise cosmic onion
     let mut cosmos = csm::Cosmos::initialise(&bedrock);
     cosmos.variable = format!("cosmos-{}", seed);
-    cosmos.render(clr::TopographyInk::new(INIT_OCEAN_LEVEL));
+    // cosmos.render(clr::TopographyInk::new(INIT_OCEAN_LEVEL));
 
     for _ in 0..6 {
         single_loop(&mut cosmos, resolution, 0.0, Time::Cosmic);

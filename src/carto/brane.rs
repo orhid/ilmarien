@@ -410,37 +410,6 @@ impl<T> From<Vec<T>> for Brane<T> {
     }
 }
 
-/* ## onions */
-
-pub type Onion<T> = Brane<Vec<T>>;
-
-impl<T> Onion<T> {
-    pub fn push(&mut self, datum: &DatumZa, value: T) {
-        self.grid[datum.unravel(self.resolution)].push(value);
-    }
-}
-
-impl<T: Clone> Onion<T> {
-    /// creates iterator over column at given datum
-    pub fn iter_column(&self, datum: &DatumZa) -> std::vec::IntoIter<T> {
-        self.grid[datum.unravel(self.resolution)]
-            .clone()
-            .into_iter()
-    }
-
-    pub fn top(&self, datum: &DatumZa) -> Option<T> {
-        self.grid[datum.unravel(self.resolution)].clone().pop()
-    }
-}
-
-impl<T: PartialOrd> Onion<T> {
-    pub fn sort_columns(&mut self) {
-        for column in &mut self.grid {
-            column.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        }
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -614,29 +583,5 @@ mod test {
 
         fs::remove_file("static/test-write-u8-2.tif").expect("test failed");
         fs::remove_file("static/test-write-u16-2.tif").expect("test failed");
-    }
-
-    /* ## onions */
-
-    #[test]
-    fn onion_push() {
-        let mut onion = Onion::from(vec![vec![0, 1]]);
-        onion.push(&DatumZa::new(0, 0), 2);
-        assert_eq!(onion.grid[0], vec![0, 1, 2]);
-    }
-
-    #[test]
-    fn onion_sort_columns() {
-        let mut onion = Onion::from(vec![vec![1, 0]]);
-        onion.sort_columns();
-        assert_eq!(onion.grid[0], vec![0, 1]);
-    }
-
-    #[test]
-    fn onion_top_does_not_pop() {
-        let onion = Onion::from(vec![vec![0, 1], vec![0, 1], vec![0, 1], vec![0, 1]]);
-        let datum = DatumZa::new(0, 0);
-        assert_eq!(onion.top(&datum), Some(1));
-        assert_eq!(onion.grid[0].len(), 2);
     }
 }
