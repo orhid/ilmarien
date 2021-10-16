@@ -3,7 +3,7 @@ use log::trace;
 use ord_subset::OrdSubsetIterExt;
 use rayon::prelude::*;
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Koppen {
     Af,
     Am,
@@ -33,34 +33,27 @@ pub enum Koppen {
 
 /* ## classificating functions */
 
-enum Arid {
-    Desert,
-    Steppe,
-    False,
+#[derive(Clone)]
+enum Type {
+    Continental,
+    Coastal,
 }
 
 enum Heat {
-    Tropical,
-    Maritime,
-    Continental,
-}
-
-enum Polar {
-    Glacier,
+    Polar,
     Tundra,
-    False,
-}
-
-enum Temp {
-    SubTropical,
-    Temperate,
     SubPolar,
+    Temperate(Type),
+    SubTropical(Type),
+    Tropical,
 }
 
 enum Rain {
-    Oceanic,
+    Arid,
+    SubArid,
     Highland,
-    Mediterranean,
+    Olivine,
+    Maritime,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -77,18 +70,49 @@ pub struct KopParam {
 impl KopParam {
     pub fn zero() -> Self {
         Self {
-            tmax: 0.0,
-            tmed: 0.0,
-            tmin: 0.0,
-            rmed: 0.0,
-            rmin: 0.0,
-            rhot: 0.0,
-            rcol: 0.0,
+            tmax: f64::NAN,
+            tmed: f64::NAN,
+            tmin: f64::NAN,
+            rmed: f64::NAN,
+            rmin: f64::NAN,
+            rhot: f64::NAN,
+            rcol: f64::NAN,
         }
     }
 
-    fn find_arid(&self) -> Arid {
-        //let mut threshold = self.tmed * 0.84;
+    pub fn update(&mut self, temp: f64, rain: f64) {
+        if temp > self.tmax || self.tmax.is_nan() {
+            self.tmax = temp;
+            self.rhot = rain;
+        }
+        if temp < self.tmin || self.tmin.is_nan() {
+            self.tmin = temp;
+            self.rcol = rain;
+        }
+        if self.tmed.is_nan() {
+            self.tmed = temp;
+        } else {
+            self.tmed = (self.tmax + self.tmin + 3.0 * self.tmed + temp) * 6.0f64.recip();
+        }
+        if rain < self.rmin || self.rmin.is_nan() {
+            self.rmin = rain;
+        }
+        if self.rmed.is_nan() {
+            self.rmed = rain;
+        } else {
+            self.rmed = (self.rhot + self.rcol + 3.0 * self.rmed + rain) * 6.0f64.recip();
+        }
+    }
+
+    fn find_type(&self) -> Type {
+        if self.tmin < 8.0 {
+            Type::Continental
+        } else {
+            Type::Coastal
+        }
+    }
+
+    fn find_rain(&self) -> Rain {
         let mut threshold = self.tmed;
         let step = 9.6;
         if self.rhot > 1.44 * self.rmed {
@@ -98,96 +122,88 @@ impl KopParam {
         }
 
         if self.rmed < 0.5 * threshold {
-            Arid::Desert
+            Rain::Arid
         } else if self.rmed < threshold {
-            Arid::Steppe
+            Rain::SubArid
         } else {
-            Arid::False
+            if self.rcol > self.rhot * 1.08 {
+                Rain::Highland
+            } else if self.rcol < self.rhot * 0.64 {
+                Rain::Olivine
+            } else {
+                Rain::Maritime
+            }
         }
     }
 
-    fn find_heat(&self) -> Heat {
-        if self.tmin > 18.0 {
-            Heat::Tropical
-        } else if self.tmin < 8.0 {
-            Heat::Continental
-        } else {
-            Heat::Maritime
-        }
-    }
-
-    fn find_polar(&self) -> Polar {
+    fn find_heat(&self, t: Type) -> Heat {
         if self.tmax < 0.0 {
-            Polar::Glacier
+            Heat::Polar
         } else if self.tmax < 7.0 {
-            Polar::Tundra
+            Heat::Tundra
+        } else if self.tmin > 18.0 {
+            Heat::Tropical
+        } else if self.tmax > 21.0 {
+            Heat::SubTropical(t)
+        } else if self.tmin < 0.0 {
+            Heat::SubPolar
         } else {
-            Polar::False
+            Heat::Temperate(t)
         }
     }
 
-    fn class_temp(&self) -> Temp {
-        if self.tmax > 21.0 {
-            Temp::SubTropical
-        } else if self.tmin > 0.0 {
-            Temp::Temperate
-        } else {
-            Temp::SubPolar
-        }
-    }
-
-    fn class_rain(&self) -> Rain {
-        if self.rcol > self.rhot * 1.08 {
-            Rain::Highland
-        } else if self.rcol < self.rhot * 0.64 {
-            Rain::Mediterranean
-        } else {
-            Rain::Oceanic
-        }
-    }
-
-    fn classify(&self) -> Koppen {
-        match self.find_arid() {
-            Arid::Desert => match self.find_heat() {
-                Heat::Continental => Koppen::BWc,
-                _ => Koppen::BWh,
+    pub fn classify(&self) -> Koppen {
+        let t = self.find_type();
+        let rain = self.find_rain();
+        let heat = self.find_heat(t.clone());
+        match rain {
+            Rain::Arid => match t {
+                Type::Continental => Koppen::BWc,
+                Type::Coastal => Koppen::BWh,
             },
-            Arid::Steppe => match self.find_heat() {
-                Heat::Continental => Koppen::BSc,
-                _ => Koppen::BSh,
+            Rain::SubArid => match t {
+                Type::Continental => Koppen::BSc,
+                Type::Coastal => Koppen::BSh,
             },
-            Arid::False => match self.find_polar() {
-                Polar::Glacier => Koppen::EF,
-                Polar::Tundra => Koppen::ET,
-                Polar::False => match self.find_heat() {
-                    Heat::Tropical => {
-                        if self.rmin > 54.0 {
-                            Koppen::Af
-                        } else if self.rmin > 96.0 - self.rmed {
-                            Koppen::Am
-                        } else {
-                            Koppen::As
-                        }
+            _ => match heat {
+                Heat::Polar => Koppen::EF,
+                Heat::Tundra => Koppen::ET,
+                Heat::Tropical => {
+                    if self.rmin > 54.0 {
+                        Koppen::Af
+                    } else if self.rmin > 96.0 - self.rmed {
+                        Koppen::Am
+                    } else {
+                        Koppen::As
                     }
-                    Heat::Maritime => match (self.class_temp(), self.class_rain()) {
-                        (Temp::SubTropical, Rain::Oceanic) => Koppen::Cfa,
-                        (Temp::SubTropical, Rain::Highland) => Koppen::Cwa,
-                        (Temp::SubTropical, Rain::Mediterranean) => Koppen::Csa,
-                        (Temp::Temperate, Rain::Oceanic) => Koppen::Cfc,
-                        (Temp::Temperate, Rain::Highland) => Koppen::Cwc,
-                        (Temp::Temperate, Rain::Mediterranean) => Koppen::Csc,
-                        _ => panic!("Temp::SubPolar cannot appear in Heat::Maritime"),
+                }
+                Heat::SubPolar => match rain {
+                    Rain::Highland => Koppen::Dwd,
+                    Rain::Olivine => Koppen::Dsd,
+                    _ => Koppen::Dfd,
+                },
+                Heat::Temperate(t) => match t {
+                    Type::Continental => match rain {
+                        Rain::Highland => Koppen::Dwc,
+                        Rain::Olivine => Koppen::Dsc,
+                        _ => Koppen::Dfc,
                     },
-                    Heat::Continental => match (self.class_temp(), self.class_rain()) {
-                        (Temp::SubTropical, Rain::Oceanic) => Koppen::Dfa,
-                        (Temp::SubTropical, Rain::Highland) => Koppen::Dwa,
-                        (Temp::SubTropical, Rain::Mediterranean) => Koppen::Dsa,
-                        (Temp::Temperate, Rain::Oceanic) => Koppen::Dfc,
-                        (Temp::Temperate, Rain::Highland) => Koppen::Dwc,
-                        (Temp::Temperate, Rain::Mediterranean) => Koppen::Dsc,
-                        (Temp::SubPolar, Rain::Oceanic) => Koppen::Dfd,
-                        (Temp::SubPolar, Rain::Highland) => Koppen::Dwd,
-                        (Temp::SubPolar, Rain::Mediterranean) => Koppen::Dsd,
+                    Type::Coastal => match rain {
+                        Rain::Highland => Koppen::Cwc,
+                        Rain::Olivine => Koppen::Csc,
+                        _ => Koppen::Cfc,
+                    },
+                },
+                Heat::SubTropical(t) => match t {
+                    Type::Continental => match rain {
+                        Rain::Highland => Koppen::Dwa,
+                        Rain::Olivine => Koppen::Dsa,
+                        _ => Koppen::Dfa,
+                    },
+                    Type::Coastal => match rain {
+                        Rain::Highland => Koppen::Cwa,
+                        Rain::Olivine => Koppen::Csa,
+                        _ => Koppen::Cfa,
                     },
                 },
             },
@@ -241,4 +257,34 @@ pub fn zone(temps: &Vec<Brane<f64>>, rains: &Vec<Brane<f64>>) -> Brane<Koppen> {
     );
     brane.variable = "koppen".to_string();
     brane
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use float_eq::assert_float_eq;
+    const EPSILON: f64 = 0.0001;
+
+    #[test]
+    fn param_update() {
+        let mut kp = KopParam::zero();
+        kp.update(12.0, 36.0);
+        assert_float_eq!(kp.tmax, 12.0, abs <= EPSILON);
+        assert_float_eq!(kp.rhot, 36.0, abs <= EPSILON);
+        assert_float_eq!(kp.tmin, 12.0, abs <= EPSILON);
+        assert_float_eq!(kp.rcol, 36.0, abs <= EPSILON);
+        assert_float_eq!(kp.tmed, 12.0, abs <= EPSILON);
+        assert_float_eq!(kp.rmin, 36.0, abs <= EPSILON);
+        assert_float_eq!(kp.rmed, 36.0, abs <= EPSILON);
+        kp.update(18.0, 12.0);
+        assert_float_eq!(kp.tmax, 18.0, abs <= EPSILON);
+        assert_float_eq!(kp.rhot, 12.0, abs <= EPSILON);
+        assert_float_eq!(kp.tmin, 12.0, abs <= EPSILON);
+        assert_float_eq!(kp.rcol, 36.0, abs <= EPSILON);
+        assert_float_eq!(kp.tmed, 14.0, abs <= EPSILON);
+        assert_float_eq!(kp.rmin, 12.0, abs <= EPSILON);
+        assert_float_eq!(kp.rmed, 28.0, abs <= EPSILON);
+    }
+
+    // should test classification
 }

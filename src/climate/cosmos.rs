@@ -1,5 +1,5 @@
 use crate::{
-    carto::{brane::Brane, datum::DatumZa, flux::Flux},
+    carto::{brane::Brane, flux::Flux},
     climate::{koppen::KopParam, radiation::lapse},
     vars::*,
 };
@@ -52,7 +52,7 @@ pub struct Pillar {
 }
 
 impl Pillar {
-    fn zero() -> Self {
+    pub fn zero() -> Self {
         Self {
             bedrock: 0.0,
             ocean: 0.0,
@@ -115,11 +115,8 @@ impl Cosmos {
         // assumes one has just solidified all snow, so only ice will be present
         let mut icemelt = Brane::<f64>::zeros(self.resolution);
         let elev = self.elevation();
-        let res = self.resolution;
-        for datum in (0..res.pow(2)).map(|j| DatumZa::enravel(j, res)) {
-            let tempdif =
-                temperature.get(&datum.cast(self.resolution)) - lapse(elev.read(&datum)) - 273.0;
-            let index = datum.unravel(self.resolution);
+        for index in 0..self.resolution.pow(2) {
+            let tempdif = temperature.grid[index] - lapse(elev.grid[index]) - 273.0;
             let pillar = &mut self.grid[index];
             let mut potential = tempdif.abs().sqrt() * EVA_RATE;
             if tempdif > 0.0 {
@@ -144,12 +141,8 @@ impl Cosmos {
     pub fn snowfall(&mut self, rainfall: &mut Brane<f64>, temperature: &Brane<f64>) {
         trace!("calculating snowfall");
         let elev = self.elevation();
-        let res = self.resolution;
-        for datum in (0..res.pow(2)).map(|j| DatumZa::enravel(j, res)) {
-            if temperature.get(&datum.cast(self.resolution)) - lapse(elev.read(&datum)) - 273.0
-                < 0.0
-            {
-                let index = datum.unravel(self.resolution);
+        for index in 0..self.resolution.pow(2) {
+            if temperature.grid[index] - lapse(elev.grid[index]) < 273.0 {
                 self.grid[index].snow += rainfall.grid[index] * EVA_RATE * ICE_COMP;
                 rainfall.grid[index] = 0.0;
             }
@@ -159,12 +152,11 @@ impl Cosmos {
     fn place_oceans(&mut self, ocean_elevation: &Brane<f64>) {
         let rock_elevation = self.elevation();
 
-        let res = self.resolution;
-        for datum in (0..res.pow(2)).map(|j| DatumZa::enravel(j, res)) {
-            let rock_level = rock_elevation.read(&datum);
-            let ocean_level = ocean_elevation.read(&datum);
+        for index in 0..self.resolution.pow(2) {
+            let rock_level = rock_elevation.grid[index];
+            let ocean_level = ocean_elevation.grid[index];
             if rock_level < ocean_level {
-                self.grid[datum.unravel(res)].ocean = ocean_level - rock_level;
+                self.grid[index].ocean = ocean_level - rock_level;
             }
         }
     }
@@ -175,7 +167,7 @@ impl Cosmos {
         let mut onion = Self::from(
             (0..bedrock.resolution.pow(2))
                 .into_par_iter()
-                .map(|j| Pillar::bedrock(bedrock.read(&DatumZa::enravel(j, bedrock.resolution))))
+                .map(|j| Pillar::bedrock(bedrock.grid[j]))
                 .collect::<Vec<Pillar>>(),
         );
         onion.variable = "cosmos".to_string();
@@ -228,6 +220,20 @@ impl Cosmos {
         );
         brane.variable = "elevation".to_string();
         brane
+    }
+
+    pub fn update_kp(
+        &mut self,
+        elevation: &Brane<f64>,
+        temperature: &Brane<f64>,
+        rainfall: &Brane<f64>,
+    ) {
+        for index in 0..self.resolution.pow(2) {
+            self.grid[index].kp.update(
+                temperature.grid[index] - lapse(elevation.grid[index]),
+                rainfall.grid[index],
+            );
+        }
     }
 }
 
