@@ -447,6 +447,7 @@ mod test {
 
     #[test]
     #[should_panic]
+    #[allow(unused_must_use)]
     fn brane_from_unsquare_vec() {
         Brane::from(vec![0, 1, 2]);
     }

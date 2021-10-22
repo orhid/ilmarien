@@ -3,7 +3,7 @@ use log::trace;
 use ord_subset::OrdSubsetIterExt;
 use rayon::prelude::*;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Koppen {
     Af,
     Am,
@@ -115,6 +115,7 @@ impl KopParam {
     fn find_rain(&self) -> Rain {
         let mut threshold = self.tmed;
         let step = 9.6;
+        let step = 64.0;
         if self.rhot > 1.44 * self.rmed {
             threshold += 2.0 * step;
         } else if self.rhot > 1.08 * self.rmed {

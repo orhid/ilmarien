@@ -18,6 +18,7 @@ fn single_loop(cosmos: &mut csm::Cosmos, resolution: usize, sol: f64, scale: Tim
     let surface = cosmos.surface();
     let temperature: Brane<f64>;
     match scale {
+        // cosmic scale should be used when sedimant transfer is active
         Time::Cosmic => {
             temperature = (rad::temperature(
                 &rad::insolation(if resolution > 216 { 144 } else { 72 }, SOL_DEV),
@@ -35,8 +36,10 @@ fn single_loop(cosmos: &mut csm::Cosmos, resolution: usize, sol: f64, scale: Tim
         }
     }
 
+    /*
     cosmos.solidify_snow();
     let icemelt = cosmos.form_glaciers(&temperature);
+    */
 
     // wind
     let pressure = rad::pressure(&temperature);
@@ -47,9 +50,9 @@ fn single_loop(cosmos: &mut csm::Cosmos, resolution: usize, sol: f64, scale: Tim
     let evaporation = hdr::evaporation(&pressure, &surface, &temperature);
     let elevation = cosmos.elevation();
     let mut rainfall = hdr::rainfall(&elevation, &evaporation, &wind);
-    cosmos.snowfall(&mut rainfall, &temperature);
+    // cosmos.snowfall(&mut rainfall, &temperature);
 
-    rainfall = rainfall + icemelt;
+    // rainfall = rainfall + icemelt;
     if scale == Time::Local {
         cosmos.update_kp(&elevation, &(temperature - 273.0), &(rainfall * 162.0));
     }
@@ -58,11 +61,6 @@ fn single_loop(cosmos: &mut csm::Cosmos, resolution: usize, sol: f64, scale: Tim
     // TODO: move sediment through water flow
 
     // TODO: solidify sediment
-
-    // TODO: simulate vegetation
-    // rivers and rainfall combined with temperature can give some way to include vegetation
-    // which should enable a change in evaporation
-    // a couple of round of this could lead to more erosion than without vegetation
 }
 
 #[allow(unused_variables)]
@@ -77,12 +75,14 @@ pub fn full_simulation(resolution: usize, seed: u32) {
     cosmos.variable = format!("cosmos-{}", seed);
     cosmos.render(clr::TopographyInk::new(INIT_OCEAN_LEVEL));
 
+    /*
     for _ in 0..4 {
         single_loop(&mut cosmos, resolution, 0.0, Time::Cosmic);
     }
+    */
 
     let cycle = 12;
-    let years = 2;
+    let years = 3;
     for sol in (0..years * cycle)
         .map(|c| SOL_DEV * (std::f64::consts::TAU * c as f64 / cycle as f64).sin())
     {

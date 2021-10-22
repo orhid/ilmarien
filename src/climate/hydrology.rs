@@ -35,6 +35,9 @@ fn evaporation_dt(
     match surface.get(&datum) {
         Fabric::Water => rate,
         Fabric::Ice | Fabric::Snow => 0.12 * rate,
+        Fabric::Grass | Fabric::Shrub => 0.36 * rate,
+        Fabric::Forest => 0.72 * rate,
+        Fabric::RainForest => 1.08 * rate,
         _ => 0.0,
     }
 }

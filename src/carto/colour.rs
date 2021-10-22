@@ -228,8 +228,7 @@ impl Ink<Pillar> for KoppenInk {
         if sample.ocean > 0.0 {
             RGB::new(36, 36, 36).paint()
         } else {
-            let zone = sample.kp.classify();
-            match zone {
+            match sample.zone {
                 Koppen::Af => RGB::new(34, 70, 122).paint(),
                 Koppen::Am => RGB::new(43, 94, 153).paint(),
                 Koppen::As => RGB::new(51, 122, 184).paint(),

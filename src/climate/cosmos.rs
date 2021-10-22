@@ -1,6 +1,9 @@
 use crate::{
     carto::{brane::Brane, flux::Flux},
-    climate::{koppen::KopParam, radiation::lapse},
+    climate::{
+        koppen::{KopParam, Koppen},
+        radiation::lapse,
+    },
     vars::*,
 };
 use log::trace;
@@ -14,6 +17,10 @@ pub enum Fabric {
     Water,
     Ice,
     Snow,
+    RainForest,
+    Forest,
+    Shrub,
+    Grass,
 }
 
 impl From<Fabric> for u8 {
@@ -23,6 +30,10 @@ impl From<Fabric> for u8 {
             Fabric::Snow => 1,
             Fabric::Ice => 2,
             Fabric::Stone => 3,
+            Fabric::Grass => 4,
+            Fabric::Shrub => 5,
+            Fabric::Forest => 6,
+            Fabric::RainForest => 7,
         }
     }
 }
@@ -34,7 +45,31 @@ impl From<u8> for Fabric {
             1 => Fabric::Snow,
             2 => Fabric::Ice,
             3 => Fabric::Stone,
+            4 => Fabric::Grass,
+            5 => Fabric::Shrub,
+            6 => Fabric::Forest,
+            7 => Fabric::RainForest,
             _ => panic!(),
+        }
+    }
+}
+
+impl From<Koppen> for Fabric {
+    fn from(zone: Koppen) -> Self {
+        match zone {
+            Koppen::Af | Koppen::Am | Koppen::Cfa | Koppen::Dfa => Fabric::RainForest,
+            Koppen::Cfc
+            | Koppen::Cwa
+            | Koppen::Cwc
+            | Koppen::Dfc
+            | Koppen::Dfd
+            | Koppen::Dwa
+            | Koppen::Dwc
+            | Koppen::Dwd => Fabric::Forest,
+            Koppen::Csa | Koppen::Csc | Koppen::Dsa | Koppen::Dsc | Koppen::Dsd => Fabric::Shrub,
+            Koppen::As | Koppen::BSh | Koppen::BSc | Koppen::ET => Fabric::Grass,
+            Koppen::EF => Fabric::Ice,
+            _ => Fabric::Stone,
         }
     }
 }
@@ -47,8 +82,8 @@ pub struct Pillar {
     pub ocean: f64,
     pub ice: f64,
     pub snow: f64,
-    pub vege: u8, // this will be an enum
     pub kp: KopParam,
+    pub zone: Koppen,
 }
 
 impl Pillar {
@@ -58,8 +93,8 @@ impl Pillar {
             ocean: 0.0,
             ice: 0.0,
             snow: 0.0,
-            vege: 0,
             kp: KopParam::zero(),
+            zone: Koppen::BWc,
         }
     }
 
@@ -69,13 +104,13 @@ impl Pillar {
             ocean: 0.0,
             ice: 0.0,
             snow: 0.0,
-            vege: 0,
             kp: KopParam::zero(),
+            zone: Koppen::BWc,
         }
     }
 
     fn elevation(&self) -> f64 {
-        self.bedrock + self.ocean + self.ice + self.snow
+        self.land_elevation() + self.ocean
     }
 
     fn land_elevation(&self) -> f64 {
@@ -92,7 +127,7 @@ impl From<&Pillar> for Fabric {
         } else if pillar.ocean > 0.0 {
             Fabric::Water
         } else {
-            Fabric::Stone
+            Fabric::from(pillar.zone)
         }
     }
 }
@@ -102,6 +137,7 @@ impl From<&Pillar> for Fabric {
 pub type Cosmos = Brane<Pillar>;
 
 impl Cosmos {
+    /*
     pub fn solidify_snow(&mut self) {
         for pillar in &mut self.grid {
             if pillar.snow > 0.0 {
@@ -148,6 +184,7 @@ impl Cosmos {
             }
         }
     }
+    */
 
     fn place_oceans(&mut self, ocean_elevation: &Brane<f64>) {
         let rock_elevation = self.elevation();
@@ -196,6 +233,7 @@ impl Cosmos {
         brane
     }
 
+    /*
     /// calculate the elevation gradient, only using solid layers
     pub fn landflow(&self) -> Flux<f64> {
         trace!("calculating elevation gradient model");
@@ -209,6 +247,7 @@ impl Cosmos {
         flux.variable = "elevation".to_string();
         flux
     }
+    */
 
     /// calculate the surface type model
     pub fn surface(&self) -> Brane<Fabric> {
@@ -233,14 +272,17 @@ impl Cosmos {
                 temperature.grid[index] - lapse(elevation.grid[index]),
                 rainfall.grid[index],
             );
+            self.grid[index].zone = self.grid[index].kp.classify();
         }
     }
 }
 
+/*
 /// calculate the elevation gradient
 pub fn elevation_flux(elevation: &Brane<f64>) -> Flux<f64> {
     Flux::<f64>::from(elevation)
 }
+*/
 
 #[cfg(test)]
 mod test {
@@ -255,6 +297,7 @@ mod test {
         assert!(Fabric::Ice < Fabric::Snow);
     }
 
+    /*
     #[test]
     fn cosmos_solidify_snow() {
         let mut cosmos = Brane::from(vec![Pillar::zero()]);
@@ -264,7 +307,6 @@ mod test {
         assert_float_eq!(cosmos.grid[0].ice, ICE_COMP.recip(), abs <= EPSILON);
     }
 
-    /*
     #[test]
     fn cosmos_snowfall() {
         let mut cosmos = Brane::from(vec![

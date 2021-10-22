@@ -21,7 +21,9 @@ fn test_sim() {
     // make a vector to hold the children which are spawned
     let mut children = vec![];
 
-    for seed in [1] {
+    let begin = 0;
+    let count = 6;
+    for seed in begin..begin + count {
         // spin up another thread
         children.push(thread::spawn(move || {
             sim::full_simulation(res, seed);

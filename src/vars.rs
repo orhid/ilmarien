@@ -25,7 +25,7 @@ pub const DST_FACTOR: f64 = 0.866025403784; // should slightly undistort terrain
 
 pub const SOL_DETAIL: i32 = 12; // radius of suns taken for insolation calculation
 pub const SOL_POWER: f64 = 432.0; // power of solar radiation
-pub const INIT_TEMP: f64 = -708.0; // initial world temperature
+pub const INIT_TEMP: f64 = -704.0; // initial world temperature
 pub const MID_TEMP: f64 = 273.0; // initial world temperature
 
 pub const INIT_PRES: f64 = 0.5; // initial surface pressure
