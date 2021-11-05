@@ -5,8 +5,6 @@ use crate::{
         flux::Flux,
         honeycomb::{Hexagon, HoneyCellPlanar},
     },
-    climate::cosmos::Fabric,
-    util::diffusion::diffuse_plain,
     vars::*,
 };
 use log::trace;
@@ -40,7 +38,7 @@ fn insolation_dt(datum: &DatumRe, solar_pos: f64) -> f64 {
                             x: 0.0,
                             y: solar_pos,
                         }),
-                    1.0, // + SOL_DEV * solar_pos * (solar_pos - 1.0),
+                    SOL_HEIGHT,
                 ),
             )
         })
@@ -51,78 +49,54 @@ fn insolation_dt(datum: &DatumRe, solar_pos: f64) -> f64 {
 pub fn insolation(resolution: usize, solar_pos: f64) -> Brane<f64> {
     trace!("calculating insolation model");
 
-    let mut brane = Brane::from(
+    // should return numbers from the [0,1] interval
+    // mean at around 0.3
+    Brane::from(
         (0..resolution.pow(2))
             .into_par_iter()
             .map(|j| insolation_dt(&DatumZa::enravel(j, resolution).cast(resolution), solar_pos))
             .collect::<Vec<f64>>(),
-    );
-    brane.variable = "insolation".to_string();
-    brane
+    )
+    .mul_add(2.56, -5.57573)
 }
 
 /* # temperature */
 
-/// initialise temperature to a given value in degrees Kelvin
-fn temperature_initialise(insolation: &Brane<f64>) -> Brane<f64> {
-    trace!("initialising temperature");
-    // this should be doable without cloning, need to work on the implementation
-    insolation.clone().mul_add(SOL_POWER, INIT_TEMP)
+fn temperature_update_ix(insolation: f64, temperature: f64, continentality: f64) -> f64 {
+    // this converges to insolation ^ 1.44.recip() for continentality one
+    // for exponent above two it becomes chaotic in temperature for large enough insolation
+    //   as this is basically the logistic map
+    // could also include albedo:
+    //   continentality * (albedo * (insolation - temperature.powf(1.44)) + temperature) + ...
+    continentality * (insolation - temperature.powf(1.44) + temperature)
+        + (1.0 - continentality) * temperature
 }
 
-fn temperature_oceanise(surface: &Brane<Fabric>, temperature: &mut Brane<f64>) {
-    let oceans = (0..temperature.resolution.pow(2))
-        .into_par_iter()
-        .map(|j| DatumZa::enravel(j, temperature.resolution).cast(temperature.resolution))
-        .filter(|datum| surface.get(&datum) == Fabric::Water)
-        .map(|datum| temperature.get(&datum))
-        .collect::<Vec<f64>>();
-    let tavg = oceans.iter().sum::<f64>() / oceans.len() as f64;
+/// update temperature values based on insolation
+pub fn temperature_update(
+    insolation: &Brane<f64>,
+    temperature: &mut Brane<f64>,
+    continentality: &Brane<f64>,
+) {
+    trace!("updating temperature model");
+
     for j in 0..temperature.resolution.pow(2) {
-        if surface.get(&DatumZa::enravel(j, temperature.resolution).cast(temperature.resolution))
-            == Fabric::Water
-        {
-            temperature.grid[j] = temperature.grid[j] * 0.144 + tavg * 0.856;
-        }
+        temperature.grid[j] = temperature_update_ix(
+            insolation.grid[j],
+            temperature.grid[j],
+            continentality.grid[j],
+        );
     }
-}
-
-/// calculate temperature diffusion
-fn temperature_diffuse(surface: &Brane<Fabric>, temperature: &mut Brane<f64>) {
-    trace!("calculating temperature diffusion");
-
-    for _ in 0..temperature.resolution.pow(2) / 54 {
-        temperature.grid = (0..temperature.resolution.pow(2))
-            .into_par_iter()
-            .map(|k| {
-                diffuse_plain(
-                    &DatumZa::enravel(k, temperature.resolution).cast(temperature.resolution),
-                    temperature,
-                    surface,
-                )
-            })
-            .collect::<Vec<f64>>();
-    }
-}
-
-/// calculate average temperature
-pub fn temperature(insolation: &Brane<f64>, surface: &Brane<Fabric>) -> Brane<f64> {
-    let mut temperature = temperature_initialise(insolation);
-    temperature_oceanise(surface, &mut temperature);
-    temperature_diffuse(surface, &mut temperature);
-    temperature.upscale(surface.resolution)
 }
 
 /// calculate temperature lapse rate
-pub fn lapse(elevation: f64) -> f64 {
-    (elevation - INIT_OCEAN_LEVEL) * LAPSE_RATE
+pub fn lapse(altitude: f64) -> f64 {
+    (altitude - INIT_OCEAN_LEVEL) * LAPSE_RATE
 }
 
 /* # pressure */
 
-/*
-// this can be useful later
-
+/* this can be useful later
 #[allow(dead_code)]
 fn pressure_elevation(pressure: f64, elevation: f64, temperature: f64) -> f64 {
     pressure * (LAPSE_CONST * elevation * temperature.recip()).exp()
@@ -130,67 +104,57 @@ fn pressure_elevation(pressure: f64, elevation: f64, temperature: f64) -> f64 {
 */
 
 /// calculate pressure at ocean level
-pub fn pressure(temperature: &Brane<f64>) -> Brane<f64> {
+fn pressure(temperature: &Brane<f64>) -> Brane<f64> {
     trace!("calculating pressure at ocean level");
-    let mut brane = Brane::from(
-        (0..temperature.resolution.pow(2))
-            .into_par_iter()
-            .map(|j| {
-                temperature
-                    .get(&DatumZa::enravel(j, temperature.resolution).cast(temperature.resolution))
-                    .recip()
-                    .mul_add(GAS_CONST, INIT_PRES)
-            })
-            .collect::<Vec<f64>>(),
-    );
-    brane.variable = "pressure".to_string();
-    brane
+    temperature.clone().mul_add(-1.0, 1.0)
 }
 
 /// calculate pressure gradient
-pub fn wind(pressure: &Brane<f64>) -> Flux<f64> {
+pub fn wind(temperature: &Brane<f64>) -> Flux<f64> {
     trace!("calculating pressure gradient");
-
-    Flux::<f64>::from(pressure)
+    Flux::<f64>::from(&pressure(temperature))
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
     use float_eq::{assert_float_eq, assert_float_ne};
+    use ord_subset::OrdSubsetIterExt;
     const EPSILON: f64 = 0.0000_01;
 
     #[test]
     fn insolation_values() {
         let brane = insolation(6, 0.0);
-        assert_float_eq!(brane.grid[0], 2.529651, abs <= EPSILON);
-        assert_float_eq!(brane.grid[8], 2.223781, abs <= EPSILON);
-        assert_float_eq!(brane.grid[24], 2.290107, abs <= EPSILON);
+        assert!(*brane.grid.iter().ord_subset_max().unwrap() < 1.0);
+        assert!(*brane.grid.iter().ord_subset_min().unwrap() > 0.0);
+        assert_float_eq!(brane.grid.iter().sum::<f64>() / 36.0, 0.3, abs <= 0.001);
 
-        let brane = insolation(6, 0.5);
-        assert_float_ne!(brane.grid[0], 2.529651, abs <= EPSILON);
-        assert_float_ne!(brane.grid[8], 2.223781, abs <= EPSILON);
-        assert_float_ne!(brane.grid[24], 2.290107, abs <= EPSILON);
+        assert_float_eq!(brane.grid[0], 0.900178, abs <= EPSILON);
+        assert_float_eq!(brane.grid[8], 0.117151, abs <= EPSILON);
+        assert_float_eq!(brane.grid[24], 0.286945, abs <= EPSILON);
+
+        let brane = insolation(6, 0.1);
+        assert_float_ne!(brane.grid[0], 0.900178, abs <= EPSILON);
+        assert_float_ne!(brane.grid[8], 0.117151, abs <= EPSILON);
+        assert_float_ne!(brane.grid[24], 0.286945, abs <= EPSILON);
     }
 
     #[test]
     fn temperature_values() {
-        let brane = temperature(
-            &Brane::from((0..36).map(|j| j as f64).collect::<Vec<f64>>()),
-            &Brane::from((0..36).map(|_| Fabric::Stone).collect::<Vec<Fabric>>()),
-        );
-        assert_float_eq!(brane.grid[0], -708.0, abs <= EPSILON);
-        assert_float_eq!(brane.grid[8], 2748.0, abs <= EPSILON);
-        assert_float_eq!(brane.grid[24], 9660.0, abs <= EPSILON);
+        let mut brane = insolation(6, 0.0);
+        temperature_update(&brane.clone(), &mut brane, &Brane::from(vec![1.0; 36]));
+        assert_float_eq!(brane.grid[0], 0.940882, abs <= EPSILON);
+        assert_float_eq!(brane.grid[8], 0.188699, abs <= EPSILON);
+        assert_float_eq!(brane.grid[24], 0.408226, abs <= EPSILON);
     }
 
     #[test]
     fn pressure_values() {
         let brane = pressure(&Brane::from(
-            (0..36).map(|j| j as f64 + 273.0).collect::<Vec<f64>>(),
+            (0..36).map(|j| j as f64 / 36.0).collect::<Vec<f64>>(),
         ));
-        assert_float_eq!(brane.grid[0], 1.027472, abs <= EPSILON);
-        assert_float_eq!(brane.grid[8], 1.012455, abs <= EPSILON);
-        assert_float_eq!(brane.grid[24], 0.984848, abs <= EPSILON);
+        assert_float_eq!(brane.grid[0], 1.0, abs <= EPSILON);
+        assert_float_eq!(brane.grid[8], 0.777777, abs <= EPSILON);
+        assert_float_eq!(brane.grid[24], 0.333333, abs <= EPSILON);
     }
 }

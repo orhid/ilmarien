@@ -1,288 +1,245 @@
 use crate::{
-    carto::{brane::Brane, flux::Flux},
+    carto::{
+        brane::Brane,
+        datum::DatumZa,
+        honeycomb::{ball_volume, HoneyCellToroidal},
+    },
     climate::{
-        koppen::{KopParam, Koppen},
-        radiation::lapse,
+        chart::{Chart, Zone},
+        hydrology::{evaporation, evapotranspiration, rainfall},
+        radiation::{insolation, lapse, temperature_update, wind},
+        vegetation::Vege,
     },
     vars::*,
 };
 use log::trace;
 use rayon::prelude::*;
+use std::collections::VecDeque;
 
-/* # fabrics */
-
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum Fabric {
-    Stone,
-    Water,
-    Ice,
-    Snow,
-    RainForest,
-    Forest,
-    Shrub,
-    Grass,
+#[derive(Clone)]
+pub struct Cell {
+    pub altitude: f64,
+    chart: Chart,
 }
 
-impl From<Fabric> for u8 {
-    fn from(surface: Fabric) -> Self {
-        match surface {
-            Fabric::Water => 0,
-            Fabric::Snow => 1,
-            Fabric::Ice => 2,
-            Fabric::Stone => 3,
-            Fabric::Grass => 4,
-            Fabric::Shrub => 5,
-            Fabric::Forest => 6,
-            Fabric::RainForest => 7,
-        }
-    }
-}
-
-impl From<u8> for Fabric {
-    fn from(value: u8) -> Self {
-        match value {
-            0 => Fabric::Water,
-            1 => Fabric::Snow,
-            2 => Fabric::Ice,
-            3 => Fabric::Stone,
-            4 => Fabric::Grass,
-            5 => Fabric::Shrub,
-            6 => Fabric::Forest,
-            7 => Fabric::RainForest,
-            _ => panic!(),
-        }
-    }
-}
-
-impl From<Koppen> for Fabric {
-    fn from(zone: Koppen) -> Self {
-        match zone {
-            Koppen::Af | Koppen::Am | Koppen::Cfa | Koppen::Dfa => Fabric::RainForest,
-            Koppen::Cfc
-            | Koppen::Cwa
-            | Koppen::Cwc
-            | Koppen::Dfc
-            | Koppen::Dfd
-            | Koppen::Dwa
-            | Koppen::Dwc
-            | Koppen::Dwd => Fabric::Forest,
-            Koppen::Csa | Koppen::Csc | Koppen::Dsa | Koppen::Dsc | Koppen::Dsd => Fabric::Shrub,
-            Koppen::As | Koppen::BSh | Koppen::BSc | Koppen::ET => Fabric::Grass,
-            Koppen::EF => Fabric::Ice,
-            _ => Fabric::Stone,
-        }
-    }
-}
-
-/* # pillars */
-
-#[derive(Clone, PartialEq, Debug)]
-pub struct Pillar {
-    pub bedrock: f64,
-    pub ocean: f64,
-    pub ice: f64,
-    pub snow: f64,
-    pub kp: KopParam,
-    pub zone: Koppen,
-}
-
-impl Pillar {
-    pub fn zero() -> Self {
+impl Cell {
+    /// initialise cell with given altitude
+    pub fn new(altitude: f64) -> Self {
         Self {
-            bedrock: 0.0,
-            ocean: 0.0,
-            ice: 0.0,
-            snow: 0.0,
-            kp: KopParam::zero(),
-            zone: Koppen::BWc,
+            altitude,
+            chart: Chart::new(),
         }
     }
 
-    fn bedrock(bedrock: f64) -> Self {
-        Self {
-            bedrock,
-            ocean: 0.0,
-            ice: 0.0,
-            snow: 0.0,
-            kp: KopParam::zero(),
-            zone: Koppen::BWc,
-        }
+    fn is_ocean(&self, ocean: f64) -> bool {
+        self.altitude < ocean
     }
 
-    fn elevation(&self) -> f64 {
-        self.land_elevation() + self.ocean
-    }
-
-    fn land_elevation(&self) -> f64 {
-        self.bedrock + self.ice + self.snow
-    }
-}
-
-impl From<&Pillar> for Fabric {
-    fn from(pillar: &Pillar) -> Self {
-        if pillar.snow > 0.0 {
-            Fabric::Snow
-        } else if pillar.ice > 0.0 {
-            Fabric::Ice
-        } else if pillar.ocean > 0.0 {
-            Fabric::Water
+    /// altitude with ocean
+    pub fn altitude(&self, ocean: f64) -> f64 {
+        if self.is_ocean(ocean) {
+            ocean
         } else {
-            Fabric::from(pillar.zone)
+            self.altitude
         }
     }
 }
 
-/* # cosmos */
-
-pub type Cosmos = Brane<Pillar>;
+pub struct Cosmos {
+    pub brane: Brane<Cell>,
+    pub ocean: f64,
+}
 
 impl Cosmos {
-    /*
-    pub fn solidify_snow(&mut self) {
-        for pillar in &mut self.grid {
-            if pillar.snow > 0.0 {
-                pillar.ice += pillar.snow * ICE_COMP.recip();
-                pillar.snow = 0.0;
-            }
+    /// initialise cosmos with given bedrock brane
+    pub fn new(bedrock: &Brane<f64>) -> Self {
+        Self {
+            brane: Brane::from(
+                (0..bedrock.resolution.pow(2))
+                    .into_par_iter()
+                    .map(|j| Cell::new(bedrock.grid[j]))
+                    .collect::<Vec<Cell>>(),
+            ),
+            ocean: INIT_OCEAN_LEVEL,
         }
     }
 
-    pub fn form_glaciers(&mut self, temperature: &Brane<f64>) -> Brane<f64> {
-        // assumes one has just solidified all snow, so only ice will be present
-        let mut icemelt = Brane::<f64>::zeros(self.resolution);
-        let elev = self.elevation();
-        for index in 0..self.resolution.pow(2) {
-            let tempdif = temperature.grid[index] - lapse(elev.grid[index]) - 273.0;
-            let pillar = &mut self.grid[index];
-            let mut potential = tempdif.abs().sqrt() * EVA_RATE;
-            if tempdif > 0.0 {
-                if pillar.ice > potential {
-                    pillar.ice -= potential;
-                } else {
-                    potential = pillar.ice;
-                }
-                icemelt.grid[index] = potential * EVA_RATE.recip();
-            } else {
-                if pillar.ocean > potential {
-                    pillar.ocean -= potential;
-                } else {
-                    potential = pillar.ocean;
-                }
-                pillar.ice += potential;
-            }
-        }
-        icemelt
-    }
-
-    pub fn snowfall(&mut self, rainfall: &mut Brane<f64>, temperature: &Brane<f64>) {
-        trace!("calculating snowfall");
-        let elev = self.elevation();
-        for index in 0..self.resolution.pow(2) {
-            if temperature.grid[index] - lapse(elev.grid[index]) < 273.0 {
-                self.grid[index].snow += rainfall.grid[index] * EVA_RATE * ICE_COMP;
-                rainfall.grid[index] = 0.0;
-            }
-        }
-    }
-    */
-
-    fn place_oceans(&mut self, ocean_elevation: &Brane<f64>) {
-        let rock_elevation = self.elevation();
-
-        for index in 0..self.resolution.pow(2) {
-            let rock_level = rock_elevation.grid[index];
-            let ocean_level = ocean_elevation.grid[index];
-            if rock_level < ocean_level {
-                self.grid[index].ocean = ocean_level - rock_level;
-            }
-        }
-    }
-
-    fn initialise_bedrock(bedrock: &Brane<f64>) -> Self {
-        trace!("initialising bedrock for cosmic onion");
-
-        let mut onion = Self::from(
-            (0..bedrock.resolution.pow(2))
+    /// find ocean tiles
+    fn ocean_tiles(&self) -> Brane<bool> {
+        Brane::from(
+            (0..self.brane.resolution.pow(2))
                 .into_par_iter()
-                .map(|j| Pillar::bedrock(bedrock.grid[j]))
-                .collect::<Vec<Pillar>>(),
-        );
-        onion.variable = "cosmos".to_string();
-        onion
+                .map(|j| {
+                    DatumZa::enravel(j, self.brane.resolution)
+                        .ball_toroidal(
+                            self.brane.resolution.div_euclid(108) as i32,
+                            self.brane.resolution as i32,
+                        )
+                        .iter()
+                        .map(|datum| {
+                            (self.ocean
+                                - self.brane.grid[datum.unravel(self.brane.resolution)].altitude)
+                                .signum()
+                        })
+                        .sum::<f64>()
+                        > ball_volume(self.brane.resolution.div_euclid(108) as i32) as f64 * 0.72
+                })
+                .collect::<Vec<bool>>(),
+        )
     }
 
-    /// initialise the cosmic onion
-    pub fn initialise(bedrock: &Brane<f64>) -> Self {
-        trace!("initialising cosmic onion");
-
-        let mut cosmos = Self::initialise_bedrock(bedrock);
-        let ocean_elevation = Brane::from(vec![INIT_OCEAN_LEVEL; cosmos.resolution.pow(2)]);
-        cosmos.place_oceans(&ocean_elevation);
-        cosmos
-    }
-
-    /// calculate the surface level model
-    pub fn elevation(&self) -> Brane<f64> {
-        let mut brane = Brane::from(
-            (0..self.resolution.pow(2))
+    /// find mountain tiles
+    fn mountain_tiles(&self) -> Brane<bool> {
+        Brane::from(
+            (0..self.brane.resolution.pow(2))
                 .into_par_iter()
-                .map(|j| self.grid[j].elevation())
+                .map(|j| self.brane.grid[j].altitude > self.ocean + 0.12)
+                .collect::<Vec<bool>>(),
+        )
+    }
+
+    /// find distance to closest ocean, going around mountains
+    fn continentality(&self) -> Brane<f64> {
+        trace!("calculating continentality coefficients");
+        let step = 4.0 / self.brane.resolution as f64;
+        let mut continentality = Brane::from(
+            self.mountain_tiles()
+                .grid
+                .into_par_iter()
+                .map(|b| if b { 1.0 } else { f64::NAN })
                 .collect::<Vec<f64>>(),
         );
-        brane.variable = "elevation".to_string();
-        brane
+
+        // preopoulate oceans with zeros
+        let mut ocean_datums = VecDeque::new();
+        let ocean_tiles = self.ocean_tiles();
+        for index in 0..self.brane.resolution.pow(2) {
+            if ocean_tiles.grid[index] {
+                continentality.grid[index] = 0.0;
+                ocean_datums.push_back(DatumZa::enravel(index, self.brane.resolution));
+            }
+        }
+
+        // flood fill from ocean datums
+        while !ocean_datums.is_empty() {
+            let here = ocean_datums.pop_front().unwrap();
+            for datum in here.ambit_toroidal(self.brane.resolution as i32) {
+                let index = datum.unravel(self.brane.resolution);
+                if continentality.grid[index].is_nan() {
+                    continentality.grid[index] =
+                        continentality.grid[here.unravel(self.brane.resolution)] + step;
+                    ocean_datums.push_back(datum);
+                }
+            }
+        }
+
+        // check if any tiles were left stranded inside mountain regions
+        for j in 0..self.brane.resolution.pow(2) {
+            if continentality.grid[j].is_nan() {
+                continentality.grid[j] = 1.0
+            }
+        }
+        continentality
     }
 
-    /*
-    /// calculate the elevation gradient, only using solid layers
-    pub fn landflow(&self) -> Flux<f64> {
-        trace!("calculating elevation gradient model");
-
-        let mut flux = Flux::<f64>::from(&Brane::from(
-            (0..self.resolution.pow(2))
+    /// calculate the altitude model, with oceans
+    fn altitude(&self) -> Brane<f64> {
+        Brane::from(
+            (0..self.brane.resolution.pow(2))
                 .into_par_iter()
-                .map(|j| self.grid[j].land_elevation())
+                .map(|j| self.brane.grid[j].altitude(self.ocean))
                 .collect::<Vec<f64>>(),
-        ));
-        flux.variable = "elevation".to_string();
-        flux
-    }
-    */
-
-    /// calculate the surface type model
-    pub fn surface(&self) -> Brane<Fabric> {
-        let mut brane = Brane::from(
-            (0..self.resolution.pow(2))
-                .into_par_iter()
-                .map(|j| Fabric::from(&self.grid[j]))
-                .collect::<Vec<Fabric>>(),
-        );
-        brane.variable = "elevation".to_string();
-        brane
+        )
     }
 
-    pub fn update_kp(
+    /// add data to climate chart
+    fn push(
         &mut self,
-        elevation: &Brane<f64>,
         temperature: &Brane<f64>,
         rainfall: &Brane<f64>,
+        evaporation: &Brane<f64>,
+        cycle: usize,
     ) {
-        for index in 0..self.resolution.pow(2) {
-            self.grid[index].kp.update(
-                temperature.grid[index] - lapse(elevation.grid[index]),
-                rainfall.grid[index],
+        for j in 0..self.brane.resolution.pow(2) {
+            let altitude = self.brane.grid[j].altitude(self.ocean);
+            self.brane.grid[j].chart.push(
+                temperature.grid[j] - lapse(altitude),
+                rainfall.grid[j],
+                evaporation.grid[j],
+                cycle,
             );
-            self.grid[index].zone = self.grid[index].kp.classify();
+        }
+    }
+
+    /// calculate vegetation type
+    pub fn vege(&self) -> Brane<Option<Vege>> {
+        Brane::from(
+            (0..self.brane.resolution.pow(2))
+                .into_par_iter()
+                .map(|j| {
+                    let cell = &self.brane.grid[j];
+                    if cell.is_ocean(self.ocean) {
+                        None
+                    } else {
+                        Some(Zone::from(&cell.chart).vege())
+                    }
+                })
+                .collect::<Vec<Option<Vege>>>(),
+        )
+    }
+
+    /// run a simulation for a year
+    fn sim_month(
+        &mut self,
+        sol: f64,
+        months: usize,
+        temperature: &mut Brane<f64>,
+        altitude: &Brane<f64>,
+        continentality: &Brane<f64>,
+    ) {
+        temperature_update(
+            &insolation(self.brane.resolution, sol),
+            temperature,
+            continentality,
+        );
+        let evaporation = evaporation(temperature);
+        self.push(
+            &temperature.clone().mul_add(TEMP_RANGE, -6.0),
+            &rainfall(
+                altitude,
+                &evapotranspiration(&evaporation, &self.vege()),
+                &wind(temperature),
+            ),
+            &evaporation,
+            months,
+        );
+    }
+
+    /// run a simulation for a year
+    fn sim_year(
+        &mut self,
+        months: usize,
+        temperature: &mut Brane<f64>,
+        altitude: &Brane<f64>,
+        continentality: &Brane<f64>,
+    ) {
+        for sol in (0..months)
+            .map(|month| SOL_DEV * (std::f64::consts::TAU * month as f64 / months as f64).sin())
+        {
+            self.sim_month(sol, months, temperature, altitude, continentality);
+        }
+    }
+
+    /// run a climate simulation
+    pub fn sim_climate(&mut self, years: usize, months: usize) {
+        let altitude = self.altitude();
+        let continentality = self.continentality();
+        let mut temperature = insolation(self.brane.resolution, 0.0);
+        for _ in 0..years {
+            self.sim_year(months, &mut temperature, &altitude, &continentality);
         }
     }
 }
-
-/*
-/// calculate the elevation gradient
-pub fn elevation_flux(elevation: &Brane<f64>) -> Flux<f64> {
-    Flux::<f64>::from(elevation)
-}
-*/
 
 #[cfg(test)]
 mod test {
@@ -291,89 +248,40 @@ mod test {
     const EPSILON: f64 = 0.001;
 
     #[test]
-    fn layer_order() {
-        assert!(Fabric::Stone < Fabric::Water);
-        assert!(Fabric::Water < Fabric::Ice);
-        assert!(Fabric::Ice < Fabric::Snow);
-    }
-
-    /*
-    #[test]
-    fn cosmos_solidify_snow() {
-        let mut cosmos = Brane::from(vec![Pillar::zero()]);
-        cosmos.grid[0].snow = 1.0;
-        cosmos.solidify_snow();
-        assert_float_eq!(cosmos.grid[0].snow, 0.0, abs <= EPSILON);
-        assert_float_eq!(cosmos.grid[0].ice, ICE_COMP.recip(), abs <= EPSILON);
+    fn cell_altitude() {
+        let cell = Cell::new(0.5);
+        assert_float_eq!(cell.altitude(0.3), 0.5, abs <= EPSILON);
+        assert_float_eq!(cell.altitude(0.7), 0.7, abs <= EPSILON);
     }
 
     #[test]
-    fn cosmos_snowfall() {
-        let mut cosmos = Brane::from(vec![
-            vec![Layer::new(Fabric::Stone, 0.24)],
-            vec![Layer::new(Fabric::Stone, 0.24)],
-            vec![Layer::new(Fabric::Stone, 0.24)],
-            vec![Layer::new(Fabric::Stone, 0.24)],
-        ]);
-        let mut rainfall = Brane::from(vec![1.0, 0.0, 1.0, 0.0]);
-        cosmos.snowfall(&mut rainfall, &Brane::from(vec![432.0, 306.0, 0.0, 256.0]));
-        assert_eq!(cosmos.grid[0].len(), 1);
-        assert_eq!(cosmos.grid[2].len(), 2);
-        assert_float_eq!(rainfall.grid[2], 0.0, abs <= EPSILON);
+    fn cosmos_new() {
+        let cosmos = Cosmos::new(&Brane::from(vec![0.0, 0.25, 0.5, 0.75]));
+        assert_eq!(cosmos.brane.grid.len(), 4);
+        let altitude = cosmos.altitude();
+        assert_float_eq!(altitude.grid[0], 0.25, abs <= EPSILON); // ocean
+        assert_float_eq!(altitude.grid[1], 0.25, abs <= EPSILON);
+        assert_float_eq!(altitude.grid[2], 0.5, abs <= EPSILON);
     }
 
     #[test]
-    fn cosmos_form_glaciers() {
-        let mut cosmos = Brane::from(vec![
-            vec![
-                Layer::new(Fabric::Stone, 0.24),
-                Layer::new(Fabric::Ice, 0.00006),
-            ],
-            vec![
-                Layer::new(Fabric::Stone, 0.24),
-                Layer::new(Fabric::Ice, 0.06),
-            ],
-            vec![
-                Layer::new(Fabric::Stone, 0.24),
-                Layer::new(Fabric::Water, 0.00006),
-            ],
-            vec![
-                Layer::new(Fabric::Stone, 0.24),
-                Layer::new(Fabric::Water, 0.06),
-            ],
-        ]);
-        let icemelt = cosmos.form_glaciers(&Brane::from(vec![432.0, 306.0, 0.0, 256.0]));
-        assert_eq!(cosmos.grid[0].len(), 1);
-        assert_eq!(cosmos.grid[1].len(), 2);
-        assert_eq!(cosmos.grid[2].len(), 2);
-        assert_eq!(cosmos.grid[3].len(), 3);
-        assert_float_eq!(icemelt.grid[0], 0.00006 * EVA_RATE.recip(), abs <= EPSILON);
-        assert!(icemelt.grid[1] > 0.0 && icemelt.grid[1] < 0.06 * EVA_RATE.recip());
-    }
-    */
-
-    #[test]
-    fn initialise_bedrock_values() {
-        let cosmos = Cosmos::initialise_bedrock(&Brane::from(vec![0.0, 0.25, 0.5, 0.75]));
-        assert_eq!(cosmos.grid.len(), 4);
-        let elevation = cosmos.elevation();
-        assert_float_eq!(elevation.grid[0], 0.0, abs <= EPSILON);
-        assert_float_eq!(elevation.grid[1], 0.25, abs <= EPSILON);
-        assert_float_eq!(elevation.grid[2], 0.5, abs <= EPSILON);
-        let surface = cosmos.surface();
-        assert_eq!(surface.grid[0], Fabric::Stone);
-        assert_eq!(surface.grid[1], Fabric::Stone);
+    fn continentality_values() {
+        let brane = Cosmos::new(&Brane::from(
+            (0..36).map(|j| j as f64 / 36.0).collect::<Vec<f64>>(),
+        ))
+        .continentality();
+        assert_float_eq!(brane.grid[0], 0.0, abs <= EPSILON);
+        assert_float_eq!(brane.grid[12], 0.666666, abs <= EPSILON);
+        assert_float_eq!(brane.grid[24], 1.0, abs <= EPSILON);
     }
 
     #[test]
-    fn initialise_values() {
-        let cosmos = Cosmos::initialise(&Brane::from(vec![0.0, 0.25, 0.5, 0.75]));
-        let elevation = cosmos.elevation();
-        assert_float_eq!(elevation.grid[0], 0.25, abs <= EPSILON);
-        assert_float_eq!(elevation.grid[1], 0.25, abs <= EPSILON);
-        assert_float_eq!(elevation.grid[2], 0.5, abs <= EPSILON);
-        let surface = cosmos.surface();
-        assert_eq!(surface.grid[0], Fabric::Water);
-        assert_eq!(surface.grid[1], Fabric::Stone);
+    fn vege_values() {
+        let cosmos = Cosmos::new(&Brane::from(
+            (0..36).map(|j| j as f64 / 36.0).collect::<Vec<f64>>(),
+        ));
+        let brane = cosmos.vege();
+        assert_eq!(brane.grid[0], None);
+        assert_eq!(*brane.grid[24].as_ref().unwrap(), Vege::Stone);
     }
 }

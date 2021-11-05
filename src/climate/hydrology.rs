@@ -1,14 +1,14 @@
 use crate::{
     carto::{
         brane::Brane,
-        datum::{DatumRe, DatumZa},
+        datum::DatumZa,
         flux::Flux,
+        honeycomb::{ball_cone_volume, HoneyCellToroidal},
     },
-    climate::cosmos::Fabric,
-    util::diffusion::diffuse_level,
+    climate::vegetation::Vege,
     vars::*,
 };
-use log::{trace, warn};
+use log::trace;
 use ord_subset::OrdSubsetIterExt;
 use petgraph::{
     graph::{Graph, NodeIndex},
@@ -21,54 +21,35 @@ use rayon::prelude::*;
 
 /* ## evaporation */
 
-fn evaporation_rate(pressure: f64, temperature: f64) -> f64 {
-    (temperature * pressure.recip()) * 0.00288
-}
-
-fn evaporation_dt(
-    datum: &DatumRe,
-    pressure: &Brane<f64>,
-    surface: &Brane<Fabric>,
-    temperature: &Brane<f64>,
-) -> f64 {
-    let rate = evaporation_rate(pressure.get(&datum), temperature.get(&datum));
-    match surface.get(&datum) {
-        Fabric::Water => rate,
-        Fabric::Ice | Fabric::Snow => 0.12 * rate,
-        Fabric::Grass | Fabric::Shrub => 0.36 * rate,
-        Fabric::Forest => 0.72 * rate,
-        Fabric::RainForest => 1.08 * rate,
-        _ => 0.0,
-    }
-}
-
-/// calculate evaporation rate
-pub fn evaporation(
-    pressure: &Brane<f64>,
-    surface: &Brane<Fabric>,
-    temperature: &Brane<f64>,
-) -> Brane<f64> {
-    trace!("calculating evaporation rate");
-
-    if temperature.resolution != pressure.resolution {
-        warn!("evaporation: branes at incompatible resolutions: temperature, pressure");
-    }
-
-    let mut brane = Brane::from(
+/// potential amount of water that could be evaporated
+pub fn evaporation(temperature: &Brane<f64>) -> Brane<f64> {
+    trace!("calculating evaporation model");
+    Brane::from(
         (0..temperature.resolution.pow(2))
             .into_par_iter()
+            .map(|j| temperature.grid[j].powi(2))
+            .collect::<Vec<f64>>(),
+    )
+}
+
+/// actual amount of water released into the atmosphere
+pub fn evapotranspiration(
+    evaporation: &Brane<f64>,
+    vegetation: &Brane<Option<Vege>>,
+) -> Brane<f64> {
+    trace!("calculating evapotranspiration model");
+    Brane::from(
+        (0..evaporation.resolution.pow(2))
+            .into_par_iter()
             .map(|j| {
-                evaporation_dt(
-                    &DatumZa::enravel(j, temperature.resolution).cast(temperature.resolution),
-                    &pressure,
-                    &surface,
-                    &temperature,
-                )
+                evaporation.grid[j]
+                    * match &vegetation.grid[j] {
+                        Some(vege) => vege.water(),
+                        None => 0.84,
+                    }
             })
             .collect::<Vec<f64>>(),
-    );
-    brane.variable = "evaporation".to_string();
-    brane
+    )
 }
 
 /* ## rainfall */
@@ -82,8 +63,9 @@ fn rainfall_nd(
     rainfall: &mut Brane<f64>,
 ) -> f64 {
     let datum = &gradient[node];
-    let level = elevation.get(&datum.cast(evaporation.resolution));
-    let moisture = evaporation.read(&datum)
+    let index = datum.unravel(elevation.resolution);
+    let level = elevation.grid[index];
+    let moisture = evaporation.grid[index]
         + gradient
             .edges_directed(node, Direction::Incoming)
             .map(|edge| {
@@ -108,49 +90,33 @@ fn rainfall_nd(
         .iter()
         .ord_subset_min()
         .unwrap();
-    rainfall.insert(&datum, frac);
+
+    let radius = elevation.resolution.div_euclid(18) as i32;
+    let volume = ball_cone_volume(radius) as f64;
+    for nbr in datum.ball_toroidal(radius, elevation.resolution as i32) {
+        rainfall.grid[nbr.unravel(elevation.resolution)] += (frac
+            * (radius - datum.dist_toroidal(&nbr, elevation.resolution as i32) + 1) as f64
+            * volume.recip())
+        .powf(0.94);
+    }
     moisture - frac
 }
 
 /// calculate the amount of rainfall reaching the surface
 pub fn rainfall(elevation: &Brane<f64>, evaporation: &Brane<f64>, wind: &Flux<f64>) -> Brane<f64> {
     trace!("calculating rainfall");
-
-    if evaporation.resolution != wind.resolution {
-        warn!("rainfall: branes at incompatible resolutions: evaporation, pressure");
-    }
+    // this is slightly slower than diffusion, although it does look better
 
     let mut rainfall = Brane::<f64>::zeros(evaporation.resolution);
-    let residues = wind
-        .roots
-        .iter()
-        .map(|node| {
-            rainfall_nd(
-                0.0,
-                *node,
-                elevation,
-                evaporation,
-                &wind.graph,
-                &mut rainfall,
-            )
-        })
-        .collect::<Vec<f64>>();
-
-    for (j, node) in wind.roots.iter().enumerate() {
-        rainfall.grid[wind.graph[*node].unravel(rainfall.resolution)] += residues[j];
-    }
-
-    for _ in 0..rainfall.resolution.pow(2) / 324 {
-        rainfall.grid = (0..rainfall.resolution.pow(2))
-            .into_par_iter()
-            .map(|j| {
-                diffuse_level(
-                    &DatumZa::enravel(j, rainfall.resolution).cast(rainfall.resolution),
-                    &rainfall,
-                    &elevation,
-                )
-            })
-            .collect::<Vec<f64>>();
+    for node in &wind.roots {
+        rainfall_nd(
+            0.0,
+            *node,
+            elevation,
+            evaporation,
+            &wind.graph,
+            &mut rainfall,
+        );
     }
     rainfall.variable = "rainfall".to_string();
     rainfall
@@ -158,6 +124,7 @@ pub fn rainfall(elevation: &Brane<f64>, evaporation: &Brane<f64>, wind: &Flux<f6
 
 /* # watershed */
 
+/*
 fn shed_nd(
     node: NodeIndex,
     rainfall: &Brane<f64>,
@@ -187,6 +154,7 @@ pub fn shed(elevation_flux: &Flux<f64>, rainfall: &Brane<f64>) -> Brane<f64> {
     shed.variable = "shed".to_string();
     shed
 }
+*/
 
 #[cfg(test)]
 mod test {
@@ -196,14 +164,29 @@ mod test {
 
     #[test]
     fn evaporation_values() {
-        let brane = evaporation(
-            &Brane::from((0..36).map(|_| 1f64).collect::<Vec<f64>>()),
-            &Brane::from((0..36).map(|_| Fabric::Water).collect::<Vec<Fabric>>()),
-            &Brane::from((0..36).map(|j| j as f64 + 273.0).collect::<Vec<f64>>()),
+        let brane = evaporation(&Brane::from(
+            (0..36).map(|j| j as f64 / 36.0).collect::<Vec<f64>>(),
+        ));
+        assert_float_eq!(brane.grid[0], 0.0, abs <= EPSILON);
+        assert_float_eq!(brane.grid[8], 0.049382, abs <= EPSILON);
+        assert_float_eq!(brane.grid[24], 0.444444, abs <= EPSILON);
+    }
+
+    #[test]
+    fn evapotraspiration_values() {
+        let brane = evapotranspiration(
+            &Brane::from((0..4).map(|j| j as f64 / 3.0).collect::<Vec<f64>>()),
+            &Brane::from(vec![
+                Some(Vege::Broadleaf),
+                None,
+                Some(Vege::Broadleaf),
+                Some(Vege::Prairie),
+            ]),
         );
-        assert_float_eq!(brane.grid[0], 0.78624, abs <= EPSILON);
-        assert_float_eq!(brane.grid[8], 0.80928, abs <= EPSILON);
-        assert_float_eq!(brane.grid[24], 0.85536, abs <= EPSILON);
+        assert_float_eq!(brane.grid[0], 0.0, abs <= EPSILON);
+        assert_float_eq!(brane.grid[1], 0.279999, abs <= EPSILON);
+        assert_float_eq!(brane.grid[2], 0.666666, abs <= EPSILON);
+        assert_float_eq!(brane.grid[3], 0.18, abs <= EPSILON);
     }
 
     #[test]
@@ -215,11 +198,12 @@ mod test {
                 (0..36).map(|j| j as f64).collect::<Vec<f64>>(),
             )),
         );
-        assert_float_eq!(brane.grid[0], 19.138650, abs <= EPSILON);
-        assert_float_eq!(brane.grid[8], 1.095756, abs <= EPSILON);
+        assert_float_eq!(brane.grid[0], 3.198547, abs <= EPSILON);
+        assert_float_eq!(brane.grid[8], 1.089760, abs <= EPSILON);
         assert_float_eq!(brane.grid[24], 0.0, abs <= EPSILON);
     }
 
+    /*
     #[test]
     fn shed_values() {
         let brane = shed(
@@ -232,31 +216,5 @@ mod test {
         assert_float_eq!(brane.grid[8], 68.0, abs <= EPSILON);
         assert_float_eq!(brane.grid[24], 24.0, abs <= EPSILON);
     }
-
-    #[test]
-    fn hydrolic_cylce_closure() {
-        // check whether the sum of water at shed roots is equal to the sum of water evaporating
-        let evaporation = Brane::from((0..36).map(|_| 1f64).collect::<Vec<f64>>());
-        let flux = Flux::<f64>::from(&Brane::from(
-            (0..36).map(|j| j as f64).collect::<Vec<f64>>(),
-        ));
-        let shed = shed(
-            &flux,
-            &rainfall(
-                &Brane::from((0..36).map(|j| j as f64).collect::<Vec<f64>>()),
-                &evaporation,
-                &Flux::<f64>::from(&Brane::from(
-                    (0..36).map(|j| j as f64).collect::<Vec<f64>>(),
-                )),
-            ),
-        );
-        assert_float_eq!(
-            flux.roots
-                .iter()
-                .map(|node| shed.read(&flux.graph[*node]))
-                .sum::<f64>(),
-            evaporation.grid.iter().sum::<f64>(),
-            abs <= EPSILON
-        )
-    }
+    */
 }

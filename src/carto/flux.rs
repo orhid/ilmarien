@@ -26,7 +26,7 @@ impl<T: Copy + OrdSubset + Sub<Output = T> + Zero> From<&Brane<T>> for Flux<T> {
             let minbr = *brane
                 .ambit_exact(&datum)
                 .iter()
-                .ord_subset_min_by_key(|nbr| brane.read(&nbr))
+                .ord_subset_min_by_key(|nbr| brane.read(nbr))
                 .unwrap();
             let dif = brane.read(&datum) - brane.read(&minbr);
             if dif > T::zero() {

@@ -32,21 +32,23 @@ fn elevation_curve() -> Spline<f64, f64> {
 fn bedrock_level_dt(datum: &DatumRe, noise: &OpenSimplex, curve: &Spline<f64, f64>) -> f64 {
     let x: f64 = TAU * datum.x;
     let y: f64 = TAU * datum.y;
-
-    let value = (0..GEO_DETAIL)
-        .map(|level| {
-            let freq = GEO_SCALE * 2.0f64.powi(level);
-            AMP_FACTOR.powi(-level)
-                * noise.get([
-                    freq * x.cos(),
-                    freq * x.sin(),
-                    freq * DST_FACTOR * y.cos(),
-                    freq * DST_FACTOR * y.sin(),
-                ])
-        })
-        .sum::<f64>();
     curve
-        .clamped_sample(BLW_FACTOR * value * (1.0 - AMP_FACTOR.recip()))
+        .clamped_sample(
+            BLW_FACTOR
+                * (0..GEO_DETAIL)
+                    .map(|level| {
+                        let freq = GEO_SCALE * 2.0f64.powi(level);
+                        AMP_FACTOR.powi(-level)
+                            * noise.get([
+                                freq * x.cos(),
+                                freq * x.sin(),
+                                freq * DST_FACTOR * y.cos(),
+                                freq * DST_FACTOR * y.sin(),
+                            ])
+                    })
+                    .sum::<f64>()
+                * (1.0 - AMP_FACTOR.recip()),
+        )
         .unwrap()
 }
 
@@ -56,24 +58,19 @@ fn bedrock_level_dt(datum: &DatumRe, noise: &OpenSimplex, curve: &Spline<f64, f6
  * they correspond to the difference between 0 and 13824 meters
  */
 pub fn bedrock_level(resolution: usize, seed: u32) -> Brane<f64> {
-    trace!("generating bedrock levels");
-    let noise = OpenSimplex::new().set_seed(seed);
-    let curve = elevation_curve();
-
-    let mut brane = Brane::from(
+    trace!("generating bedrock altitude model");
+    Brane::from(
         (0..resolution.pow(2))
             .into_par_iter()
             .map(|j| {
                 bedrock_level_dt(
                     &DatumZa::enravel(j, resolution).cast(resolution),
-                    &noise,
-                    &curve,
+                    &OpenSimplex::new().set_seed(seed),
+                    &elevation_curve(),
                 )
             })
             .collect::<Vec<f64>>(),
-    );
-    brane.variable = "bedrock".to_string();
-    brane
+    )
 }
 
 #[cfg(test)]

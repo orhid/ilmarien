@@ -7,7 +7,7 @@ const SQRT3: f64 = 1.7320508;
 
 /* ## direction */
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub enum Direction {
     Xp,
     Zn,
@@ -143,12 +143,73 @@ pub trait HoneyCellToroidal {
     {
         Direction::array().map(|direction| self.neighbour_toroidal(direction, modulo))
     }
+
+    fn ring_toroidal(&self, radius: i32, modulo: i32) -> Vec<Self>
+    where
+        Self: Sized;
+
+    fn ball_toroidal(&self, radius: i32, modulo: i32) -> Vec<Self>
+    where
+        Self: Sized + Copy,
+    {
+        let mut ball = vec![*self];
+        for j in 1..=radius {
+            ball.append(&mut self.ring_toroidal(j, modulo));
+        }
+        ball
+    }
+
+    fn dist_toroidal(&self, other: &Self, modulo: i32) -> i32;
 }
 
 impl HoneyCellToroidal for DatumZa {
     fn neighbour_toroidal(&self, direction: Direction, modulo: i32) -> Self {
         self.neighbour_planar(direction) % modulo
     }
+
+    fn ring_toroidal(&self, radius: i32, modulo: i32) -> Vec<Self> {
+        let mut gon = (*self
+            + DatumZa {
+                x: (-radius),
+                y: (radius),
+            })
+            % modulo;
+        let mut ring = Vec::<Self>::new();
+        for direction in Direction::array() {
+            for _ in 0..radius {
+                ring.push(gon);
+                gon = gon.neighbour_toroidal(direction, modulo);
+            }
+        }
+        ring
+    }
+
+    fn dist_toroidal(&self, other: &Self, modulo: i32) -> i32 {
+        [
+            DatumZa { x: 0, y: 0 },
+            DatumZa { x: modulo, y: 0 },
+            DatumZa { x: 0, y: modulo },
+            DatumZa {
+                x: modulo,
+                y: modulo,
+            },
+        ]
+        .iter()
+        .map(|z| {
+            let d = *z - (*self - *other) % modulo;
+            (d.x.abs() + d.y.abs() + (d.x + d.y).abs()) / 2
+        })
+        .min()
+        .unwrap()
+    }
+}
+
+pub fn ball_volume(radius: i32) -> i32 {
+    3 * radius * (radius + 1) + 1
+}
+
+pub fn ball_cone_volume(radius: i32) -> i32 {
+    (radius + 1).pow(3)
 }
 
 /* ## hexagons */
@@ -269,6 +330,22 @@ mod test {
         }
     }
 
+    #[test]
+    fn volume() {
+        assert_eq!(ball_volume(0), 1);
+        assert_eq!(ball_volume(1), 7);
+        assert_eq!(ball_volume(2), 19);
+        assert_eq!(ball_volume(3), 37);
+    }
+
+    #[test]
+    fn volume_cone() {
+        assert_eq!(ball_cone_volume(0), 1);
+        assert_eq!(ball_cone_volume(1), 8);
+        assert_eq!(ball_cone_volume(2), 27);
+        assert_eq!(ball_cone_volume(3), 64);
+    }
+
     /* ## toroidal */
 
     #[test]
@@ -290,6 +367,31 @@ mod test {
                 amb[usize::from(direction)],
                 org.neighbour_toroidal(direction, 4)
             );
+        }
+    }
+
+    #[test]
+    fn ring_toroidal() {
+        let org = DatumZa { x: 0, y: 0 };
+        let ambit = org.ambit_toroidal(4);
+        let ring = org.ring_toroidal(1, 4);
+        for gon in &ambit {
+            assert!(ring.contains(gon));
+        }
+        for gon in &ring {
+            assert!(ambit.contains(gon));
+        }
+    }
+
+    #[test]
+    fn dist_toroidal() {
+        let z = DatumZa { x: 0, y: 0 };
+        for n in z.ambit_toroidal(4) {
+            assert_eq!(z.dist_toroidal(&n, 4), 1);
+        }
+        let z = DatumZa { x: 0, y: 3 };
+        for n in z.ambit_toroidal(4) {
+            assert_eq!(z.dist_toroidal(&n, 4), 1);
         }
     }
 
