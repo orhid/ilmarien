@@ -1,7 +1,4 @@
-use crate::{
-    climate::{cosmos::Pillar, koppen::Koppen},
-    vars::*,
-};
+use crate::climate::{cosmos::Cell, vegetation::Vege};
 
 /* # colour spaces */
 
@@ -105,67 +102,35 @@ impl Ink<f64> for HueInk {
     }
 }
 
+impl Ink<bool> for HueInk {
+    fn paint(&self, sample: bool) -> String {
+        HSB::new(self.hue, sample as usize as f64, self.brt).paint()
+    }
+}
+
+pub struct BiHueInk {
+    hue_p: f64,
+    hue_n: f64,
+    brt: f64,
+}
+
+impl BiHueInk {
+    pub fn new(hue_p: f64, hue_n: f64, brt: f64) -> Self {
+        BiHueInk { hue_p, hue_n, brt }
+    }
+}
+
+impl Ink<f64> for BiHueInk {
+    fn paint(&self, sample: f64) -> String {
+        if sample > 0.0 {
+            HueInk::new(self.hue_p, self.brt).paint(sample)
+        } else {
+            HueInk::new(self.hue_n, self.brt).paint(sample.abs())
+        }
+    }
+}
+
 /* ## geographic inks */
-
-pub struct TempInk;
-
-impl Ink<f64> for TempInk {
-    fn paint(&self, sample: f64) -> String {
-        if sample > MID_TEMP {
-            HueInk::new(0.02, 0.94).paint((sample - MID_TEMP) / 48.0)
-        } else {
-            HueInk::new(0.54, 0.94).paint((MID_TEMP - sample) / 12.0)
-        }
-    }
-}
-
-pub struct PresInk;
-
-impl Ink<f64> for PresInk {
-    fn paint(&self, sample: f64) -> String {
-        let mid = 1.0;
-        if sample > mid {
-            HueInk::new(0.78, 0.94).paint((sample - mid) * 12.0)
-        } else {
-            HueInk::new(0.12, 0.94).paint((mid - sample) * 12.0)
-        }
-    }
-}
-
-pub struct ElevationInk;
-
-impl Ink<f64> for ElevationInk {
-    // one unit is around 54 meters
-    fn paint(&self, sample: f64) -> String {
-        let shore: u8 = 63;
-        let elv = (sample * 255.0) as u8;
-        if elv < shore - 16 {
-            RGB::new(53, 89, 92).paint()
-        } else if elv < shore - 8 {
-            RGB::new(94, 138, 130).paint()
-        } else if elv < shore - 2 {
-            RGB::new(134, 163, 151).paint()
-        } else if elv < shore {
-            RGB::new(162, 184, 170).paint()
-        } else if elv < shore + 2 {
-            RGB::new(243, 245, 237).paint()
-        } else if elv < shore + 4 {
-            RGB::new(233, 235, 216).paint()
-        } else if elv < shore + 8 {
-            RGB::new(214, 213, 188).paint()
-        } else if elv < shore + 16 {
-            RGB::new(199, 191, 163).paint()
-        } else if elv < shore + 32 {
-            RGB::new(184, 165, 134).paint()
-        } else if elv < shore + 64 {
-            RGB::new(163, 131, 104).paint()
-        } else if elv < shore + 128 {
-            RGB::new(138, 95, 80).paint()
-        } else {
-            RGB::new(115, 71, 67).paint()
-        }
-    }
-}
 
 pub struct TopographyInk {
     ocean_level: f64,
@@ -177,86 +142,91 @@ impl TopographyInk {
     }
 }
 
-impl Ink<Pillar> for TopographyInk {
-    fn paint(&self, sample: Pillar) -> String {
-        let elevation = sample.bedrock + sample.ice + sample.snow;
-        if sample.ocean > 0.0 {
-            if sample.ocean < 2.0 / 256.0 {
+impl Ink<Cell> for TopographyInk {
+    fn paint(&self, sample: Cell) -> String {
+        let elevation = sample.altitude;
+        let ocean = self.ocean_level - elevation;
+        if ocean > 0.0 {
+            if ocean < 2.0 / 256.0 {
                 RGB::new(162, 184, 170).paint()
-            } else if sample.ocean < 8.0 / 256.0 {
+            } else if ocean < 8.0 / 256.0 {
                 RGB::new(134, 163, 151).paint()
-            } else if sample.ocean < 16.0 / 256.0 {
+            } else if ocean < 16.0 / 256.0 {
                 RGB::new(94, 138, 130).paint()
             } else {
                 RGB::new(53, 89, 92).paint()
             }
-        } else if sample.ice + sample.snow > 0.0 {
-            RGB::new(
-                (255.0 * elevation) as u8,
-                (255.0 * elevation) as u8,
-                (255.0 * elevation) as u8,
-            )
-            .paint()
+        } else if elevation < self.ocean_level {
+            RGB::new(223, 235, 217).paint()
+        } else if elevation < self.ocean_level + 2.0 / 256.0 {
+            RGB::new(243, 245, 237).paint()
+        } else if elevation < self.ocean_level + 4.0 / 256.0 {
+            RGB::new(233, 235, 216).paint()
+        } else if elevation < self.ocean_level + 8.0 / 256.0 {
+            RGB::new(214, 213, 188).paint()
+        } else if elevation < self.ocean_level + 16.0 / 256.0 {
+            RGB::new(199, 191, 163).paint()
+        } else if elevation < self.ocean_level + 32.0 / 256.0 {
+            RGB::new(184, 165, 134).paint()
+        } else if elevation < self.ocean_level + 64.0 / 256.0 {
+            RGB::new(163, 131, 104).paint()
+        } else if elevation < self.ocean_level + 128.0 / 256.0 {
+            RGB::new(138, 95, 80).paint()
         } else {
-            if elevation < self.ocean_level {
-                RGB::new(223, 235, 217).paint()
-            } else if elevation < self.ocean_level + 2.0 / 256.0 {
-                RGB::new(243, 245, 237).paint()
-            } else if elevation < self.ocean_level + 4.0 / 256.0 {
-                RGB::new(233, 235, 216).paint()
-            } else if elevation < self.ocean_level + 8.0 / 256.0 {
-                RGB::new(214, 213, 188).paint()
-            } else if elevation < self.ocean_level + 16.0 / 256.0 {
-                RGB::new(199, 191, 163).paint()
-            } else if elevation < self.ocean_level + 32.0 / 256.0 {
-                RGB::new(184, 165, 134).paint()
-            } else if elevation < self.ocean_level + 64.0 / 256.0 {
-                RGB::new(163, 131, 104).paint()
-            } else if elevation < self.ocean_level + 128.0 / 256.0 {
-                RGB::new(138, 95, 80).paint()
-            } else {
-                RGB::new(115, 71, 67).paint()
-            }
+            RGB::new(115, 71, 67).paint()
         }
     }
 }
 
 pub struct KoppenInk;
 
-impl Ink<Pillar> for KoppenInk {
-    fn paint(&self, sample: Pillar) -> String {
-        if sample.ocean > 0.0 {
-            RGB::new(36, 36, 36).paint()
-        } else {
-            match sample.zone {
-                Koppen::Af => RGB::new(34, 70, 122).paint(),
-                Koppen::Am => RGB::new(43, 94, 153).paint(),
-                Koppen::As => RGB::new(51, 122, 184).paint(),
-                Koppen::BWh => RGB::new(184, 104, 51).paint(),
-                Koppen::BWc => RGB::new(184, 51, 65).paint(),
-                Koppen::BSh => RGB::new(214, 145, 99).paint(),
-                Koppen::BSc => RGB::new(214, 99, 110).paint(),
-                Koppen::Cfa => RGB::new(184, 170, 51).paint(),
-                Koppen::Cfc => RGB::new(214, 201, 86).paint(),
-                Koppen::Csa => RGB::new(120, 153, 43).paint(),
-                Koppen::Csc => RGB::new(151, 184, 73).paint(),
-                Koppen::Cwa => RGB::new(52, 122, 34).paint(),
-                Koppen::Cwc => RGB::new(80, 153, 61).paint(),
-                Koppen::Dfa => RGB::new(43, 153, 109).paint(),
-                Koppen::Dfc => RGB::new(73, 184, 140).paint(),
-                Koppen::Dfd => RGB::new(111, 214, 173).paint(),
-                Koppen::Dsa => RGB::new(98, 43, 153).paint(),
-                Koppen::Dsc => RGB::new(129, 73, 184).paint(),
-                Koppen::Dsd => RGB::new(163, 111, 214).paint(),
-                Koppen::Dwa => RGB::new(122, 34, 87).paint(),
-                Koppen::Dwc => RGB::new(153, 61, 116).paint(),
-                Koppen::Dwd => RGB::new(184, 95, 148).paint(),
-                Koppen::EF => RGB::new(245, 218, 215).paint(),
-                Koppen::ET => RGB::new(235, 150, 159).paint(),
-            }
+impl Ink<Option<Vege>> for KoppenInk {
+    fn paint(&self, sample: Option<Vege>) -> String {
+        match sample {
+            None => RGB::new(36, 36, 36).paint(),
+            Some(vege) => match vege {
+                Vege::Frost => RGB::new(245, 225, 227).paint(),
+                Vege::Stone => RGB::new(184, 170, 162).paint(),
+                Vege::Tundra => RGB::new(163, 132, 111).paint(),
+                Vege::Prairie => RGB::new(161, 199, 103).paint(),
+                Vege::Savanna => RGB::new(214, 173, 77).paint(),
+                Vege::Sand => RGB::new(199, 97, 72).paint(),
+                Vege::Shrub => RGB::new(241, 214, 99).paint(),
+                Vege::Taiga => RGB::new(94, 138, 116).paint(),
+                Vege::Coniferous => RGB::new(95, 163, 108).paint(),
+                Vege::Decideous => RGB::new(84, 144, 184).paint(),
+                Vege::Monsoon => RGB::new(106, 106, 184).paint(),
+                Vege::Broadleaf => RGB::new(163, 75, 137).paint(),
+            },
         }
     }
 }
+/*
+Koppen::Af => RGB::new(34, 70, 122).paint(),
+Koppen::Am => RGB::new(43, 94, 153).paint(),
+Koppen::As => RGB::new(51, 122, 184).paint(),
+Koppen::BWh => RGB::new(184, 104, 51).paint(),
+Koppen::BWc => RGB::new(184, 51, 65).paint(),
+Koppen::BSh => RGB::new(214, 145, 99).paint(),
+Koppen::BSc => RGB::new(214, 99, 110).paint(),
+Koppen::Cfa => RGB::new(184, 170, 51).paint(),
+Koppen::Cfc => RGB::new(214, 201, 86).paint(),
+Koppen::Csa => RGB::new(120, 153, 43).paint(),
+Koppen::Csc => RGB::new(151, 184, 73).paint(),
+Koppen::Cwa => RGB::new(52, 122, 34).paint(),
+Koppen::Cwc => RGB::new(80, 153, 61).paint(),
+Koppen::Dfa => RGB::new(43, 153, 109).paint(),
+Koppen::Dfc => RGB::new(73, 184, 140).paint(),
+Koppen::Dfd => RGB::new(111, 214, 173).paint(),
+Koppen::Dsa => RGB::new(98, 43, 153).paint(),
+Koppen::Dsc => RGB::new(129, 73, 184).paint(),
+Koppen::Dsd => RGB::new(163, 111, 214).paint(),
+Koppen::Dwa => RGB::new(122, 34, 87).paint(),
+Koppen::Dwc => RGB::new(153, 61, 116).paint(),
+Koppen::Dwd => RGB::new(184, 95, 148).paint(),
+Koppen::EF => RGB::new(245, 218, 215).paint(),
+Koppen::ET => RGB::new(235, 150, 159).paint(),
+*/
 
 #[cfg(test)]
 mod test {

@@ -36,7 +36,7 @@ fn poly_rings_to_svg(poly: &Polygon<f64>) -> String {
 
     lines
         .iter()
-        .map(|l| poly_ring_to_svg(&l))
+        .map(poly_ring_to_svg)
         .collect::<Vec<String>>()
         .join("M")
 }
@@ -44,7 +44,7 @@ fn poly_rings_to_svg(poly: &Polygon<f64>) -> String {
 fn poly_ring_to_svg(line: &LineString<f64>) -> String {
     line.0
         .iter()
-        .map(|c| coord_to_svg(&c))
+        .map(coord_to_svg)
         .collect::<Vec<String>>()
         .join("L")
 }
