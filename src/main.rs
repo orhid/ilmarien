@@ -10,13 +10,13 @@ fn test() {}
 
 #[allow(dead_code)]
 fn test_sim() {
-    let res: usize = 144;
+    let res: usize = 108;
 
     // make a vector to hold the children which are spawned
     let mut children = vec![];
 
-    let begin = 7891;
-    let count = 6;
+    let begin = 0;
+    let count = 1;
     for seed in begin..begin + count {
         // spin up another thread
         children.push(thread::spawn(move || {
@@ -30,7 +30,7 @@ fn test_sim() {
     }
 
     for child in children {
-        // wait for the thread to finish. Returns a result
+        // wait for the thread to finish
         let _ = child.join();
     }
 }

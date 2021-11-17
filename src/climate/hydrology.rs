@@ -97,7 +97,7 @@ fn rainfall_nd(
         rainfall.grid[nbr.unravel(elevation.resolution)] += (frac
             * (radius - datum.dist_toroidal(&nbr, elevation.resolution as i32) + 1) as f64
             * volume.recip())
-        .powf(0.94);
+        .powf(0.89)
     }
     moisture - frac
 }
@@ -106,6 +106,10 @@ fn rainfall_nd(
 pub fn rainfall(elevation: &Brane<f64>, evaporation: &Brane<f64>, wind: &Flux<f64>) -> Brane<f64> {
     trace!("calculating rainfall");
     // this is slightly slower than diffusion, although it does look better
+    // unfortunately this is also hugely resolution dependent
+    //      higher resolutions are much much wetter
+    // a solution to both of those problems would be to calculate rain at a set resolution
+    //      and then use regression to interpolate to a higher resolution
 
     let mut rainfall = Brane::<f64>::zeros(evaporation.resolution);
     for node in &wind.roots {

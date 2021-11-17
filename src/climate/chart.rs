@@ -25,7 +25,7 @@ impl Zone {
     }
 
     pub fn dist(&self, other: &Zone) -> f64 {
-        (self.aridity - other.aridity).abs()
+        (self.aridity - other.aridity).abs() * 1.44
             + (self.swing - other.swing).abs() / 2.0
             + (self.tmin - other.tmin).abs() / TEMP_RANGE
             + (self.tmax - other.tmax).abs() / TEMP_RANGE
@@ -125,7 +125,7 @@ mod test {
     fn dist() {
         let z0 = Zone::new(0.0, 0.0, 0.0, 0.0);
         let z1 = Zone::new(1.0, 2.0, TEMP_RANGE, TEMP_RANGE);
-        assert_float_eq!(z0.dist(&z1), 4.0, abs <= EPSILON);
+        assert_float_eq!(z0.dist(&z1), 4.44, abs <= EPSILON);
     }
 
     #[test]
@@ -201,9 +201,44 @@ mod test {
             Zone::new(f64::NAN, f64::NAN, f64::NAN, f64::NAN).vege(),
             Vege::Stone
         );
-        assert_eq!(Zone::new(0.0, 0.0, -6.0, 0.0).vege(), Vege::Stone);
-        assert_eq!(Zone::new(0.0, 0.0, 21.0, 36.0).vege(), Vege::Sand);
-        assert_eq!(Zone::new(0.24, 0.0, 21.0, 36.0).vege(), Vege::Savanna);
-        assert_eq!(Zone::new(0.84, 0.0, 21.0, 36.0).vege(), Vege::Broadleaf);
+        assert_eq!(Zone::new(0.0, 0.0, -6.0, -6.0).vege(), Vege::Stone);
+        assert_eq!(Zone::new(0.0, 0.0, 2.0, 10.0).vege(), Vege::Stone);
+        assert_eq!(Zone::new(0.0, 0.0, 10.0, 26.0).vege(), Vege::Stone);
+        assert_eq!(Zone::new(0.0, 0.0, 18.0, 32.0).vege(), Vege::Sand);
+        assert_eq!(Zone::new(0.0, 0.0, 32.0, 32.0).vege(), Vege::Sand);
+
+        assert_eq!(Zone::new(0.3, 0.0, -6.0, -6.0).vege(), Vege::Frost);
+        assert_eq!(Zone::new(0.3, 0.0, -6.0, 2.0).vege(), Vege::Frost);
+        assert_eq!(Zone::new(0.3, 0.0, -6.0, 10.0).vege(), Vege::Tundra);
+        assert_eq!(Zone::new(0.3, 0.0, -6.0, 32.0).vege(), Vege::Prairie);
+        assert_eq!(Zone::new(0.3, 0.0, 2.0, 2.0).vege(), Vege::Prairie);
+        assert_eq!(Zone::new(0.3, 0.0, 2.0, 18.0).vege(), Vege::Prairie);
+        assert_eq!(Zone::new(0.3, 0.0, 2.0, 32.0).vege(), Vege::Prairie);
+        assert_eq!(Zone::new(0.3, 0.0, 10.0, 10.0).vege(), Vege::Prairie);
+        assert_eq!(Zone::new(0.3, 0.0, 10.0, 26.0).vege(), Vege::Prairie);
+        assert_eq!(Zone::new(0.3, 0.0, 10.0, 32.0).vege(), Vege::Savanna);
+        assert_eq!(Zone::new(0.3, 0.0, 18.0, 26.0).vege(), Vege::Savanna);
+        assert_eq!(Zone::new(0.3, 0.0, 26.0, 26.0).vege(), Vege::Sand);
+        assert_eq!(Zone::new(0.3, 0.0, 32.0, 32.0).vege(), Vege::Sand);
+
+        assert_eq!(Zone::new(0.6, 0.0, -6.0, -6.0).vege(), Vege::Frost);
+        assert_eq!(Zone::new(0.6, 0.0, -6.0, 2.0).vege(), Vege::Frost);
+        assert_eq!(Zone::new(0.6, 0.0, -6.0, 10.0).vege(), Vege::Tundra);
+        assert_eq!(Zone::new(0.6, 0.0, -6.0, 32.0).vege(), Vege::Tundra);
+        assert_eq!(Zone::new(0.6, 0.0, 2.0, 2.0).vege(), Vege::Tundra);
+        assert_eq!(Zone::new(0.6, 0.0, 10.0, 32.0).vege(), Vege::Shrub);
+        assert_eq!(Zone::new(0.6, 0.0, 18.0, 18.0).vege(), Vege::Shrub);
+        assert_eq!(Zone::new(0.6, 0.0, 18.0, 32.0).vege(), Vege::Savanna);
+        assert_eq!(Zone::new(0.6, 0.0, 32.0, 32.0).vege(), Vege::Savanna);
+
+        assert_eq!(Zone::new(1.2, 0.0, -6.0, -6.0).vege(), Vege::Frost);
+        assert_eq!(Zone::new(1.2, 0.0, -6.0, 2.0).vege(), Vege::Taiga);
+        assert_eq!(Zone::new(1.2, 0.0, -6.0, 10.0).vege(), Vege::Taiga);
+        assert_eq!(Zone::new(1.2, 0.0, -6.0, 32.0).vege(), Vege::Coniferous);
+        assert_eq!(Zone::new(1.2, 0.0, 2.0, 2.0).vege(), Vege::Coniferous);
+        assert_eq!(Zone::new(1.2, 0.0, 2.0, 32.0).vege(), Vege::Coniferous);
+        assert_eq!(Zone::new(1.2, 0.0, 10.0, 32.0).vege(), Vege::Decideous);
+        assert_eq!(Zone::new(1.2, 0.0, 18.0, 26.0).vege(), Vege::Broadleaf);
+        assert_eq!(Zone::new(1.2, 0.0, 32.0, 32.0).vege(), Vege::Broadleaf);
     }
 }
