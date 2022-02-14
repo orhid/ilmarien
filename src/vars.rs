@@ -38,3 +38,4 @@ pub const LAPSE_RATE: f64 = 135.4752; // temperature lapse rate
 
 pub const EVA_RATE: f64 = 0.0000152587890625; // amount of water evaporated at every cycle
 pub const FLAT_RAIN: f64 = 0.18; // amount of moisture dropped while passing through flat terrain
+pub const RAIN_RES: usize = 108; // base resolution for rainfall calculation

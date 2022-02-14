@@ -1,3 +1,5 @@
+/// this module contains the Zone and Chart Structs
+/// which are used to classify points in space into climate types
 use crate::{climate::vegetation::Vege, vars::TEMP_RANGE};
 use ord_subset::OrdSubsetIterExt;
 use std::collections::VecDeque;
@@ -235,7 +237,7 @@ mod test {
         assert_eq!(Zone::new(1.2, 0.0, -6.0, 2.0).vege(), Vege::Taiga);
         assert_eq!(Zone::new(1.2, 0.0, -6.0, 10.0).vege(), Vege::Taiga);
         assert_eq!(Zone::new(1.2, 0.0, -6.0, 32.0).vege(), Vege::Coniferous);
-        assert_eq!(Zone::new(1.2, 0.0, 2.0, 2.0).vege(), Vege::Coniferous);
+        assert_eq!(Zone::new(1.2, 0.0, 2.0, 2.0).vege(), Vege::Taiga);
         assert_eq!(Zone::new(1.2, 0.0, 2.0, 32.0).vege(), Vege::Coniferous);
         assert_eq!(Zone::new(1.2, 0.0, 10.0, 32.0).vege(), Vege::Decideous);
         assert_eq!(Zone::new(1.2, 0.0, 18.0, 26.0).vege(), Vege::Broadleaf);

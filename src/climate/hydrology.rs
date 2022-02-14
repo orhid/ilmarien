@@ -63,9 +63,8 @@ fn rainfall_nd(
     rainfall: &mut Brane<f64>,
 ) -> f64 {
     let datum = &gradient[node];
-    let index = datum.unravel(elevation.resolution);
-    let level = elevation.grid[index];
-    let moisture = evaporation.grid[index]
+    let level = elevation.get(&datum.cast(RAIN_RES));
+    let moisture = evaporation.get(&datum.cast(RAIN_RES))
         + gradient
             .edges_directed(node, Direction::Incoming)
             .map(|edge| {
@@ -91,13 +90,19 @@ fn rainfall_nd(
         .ord_subset_min()
         .unwrap();
 
-    let radius = elevation.resolution.div_euclid(18) as i32;
+    let radius = RAIN_RES.div_euclid(18) as i32;
     let volume = ball_cone_volume(radius) as f64;
-    for nbr in datum.ball_toroidal(radius, elevation.resolution as i32) {
-        rainfall.grid[nbr.unravel(elevation.resolution)] += (frac
-            * (radius - datum.dist_toroidal(&nbr, elevation.resolution as i32) + 1) as f64
-            * volume.recip())
-        .powf(0.89)
+    for nbr in datum.ball_toroidal(radius, RAIN_RES as i32) {
+        rainfall.grid[nbr.unravel(RAIN_RES)] += [
+            (frac
+                * (radius - datum.dist_toroidal(&nbr, RAIN_RES as i32) + 1) as f64
+                * volume.recip())
+            .powf(0.87),
+            0.0084,
+        ]
+        .iter()
+        .ord_subset_min()
+        .unwrap()
     }
     moisture - frac
 }
@@ -111,7 +116,7 @@ pub fn rainfall(elevation: &Brane<f64>, evaporation: &Brane<f64>, wind: &Flux<f6
     // a solution to both of those problems would be to calculate rain at a set resolution
     //      and then use regression to interpolate to a higher resolution
 
-    let mut rainfall = Brane::<f64>::zeros(evaporation.resolution);
+    let mut rainfall = Brane::<f64>::zeros(RAIN_RES);
     for node in &wind.roots {
         rainfall_nd(
             0.0,
@@ -123,7 +128,11 @@ pub fn rainfall(elevation: &Brane<f64>, evaporation: &Brane<f64>, wind: &Flux<f6
         );
     }
     rainfall.variable = "rainfall".to_string();
-    rainfall
+    if elevation.resolution == rainfall.resolution {
+        rainfall
+    } else {
+        rainfall.upscale(elevation.resolution)
+    }
 }
 
 /* # watershed */
@@ -196,15 +205,15 @@ mod test {
     #[test]
     fn rainfall_values() {
         let brane = rainfall(
-            &Brane::from((0..36).map(|j| j as f64).collect::<Vec<f64>>()),
-            &Brane::from((0..36).map(|j| (j % 3) as f64).collect::<Vec<f64>>()),
+            &Brane::from((0..144).map(|j| j as f64).collect::<Vec<f64>>()),
+            &Brane::from((0..144).map(|j| (j % 3) as f64).collect::<Vec<f64>>()),
             &Flux::<f64>::from(&Brane::from(
-                (0..36).map(|j| j as f64).collect::<Vec<f64>>(),
+                (0..144).map(|j| j as f64).collect::<Vec<f64>>(),
             )),
         );
-        assert_float_eq!(brane.grid[0], 3.198547, abs <= EPSILON);
-        assert_float_eq!(brane.grid[8], 1.089760, abs <= EPSILON);
-        assert_float_eq!(brane.grid[24], 0.0, abs <= EPSILON);
+        assert_float_eq!(brane.grid[0], 0.100471, abs <= EPSILON);
+        assert_float_eq!(brane.grid[12], 0.051076, abs <= EPSILON);
+        assert_float_eq!(brane.grid[72], 0.0, abs <= EPSILON);
     }
 
     /*

@@ -188,7 +188,7 @@ impl Cosmos {
         )
     }
 
-    /// run a simulation for a year
+    /// run a simulation for a month
     fn sim_month(
         &mut self,
         sol: f64,
@@ -208,7 +208,7 @@ impl Cosmos {
             &rainfall(
                 altitude,
                 &evapotranspiration(&evaporation, &self.vege()),
-                &wind(temperature),
+                &wind(&temperature.upscale(RAIN_RES)),
             ),
             &evaporation,
             months,

@@ -10,13 +10,13 @@ fn test() {}
 
 #[allow(dead_code)]
 fn test_sim() {
-    let res: usize = 108;
+    let res: usize = 432;
 
     // make a vector to hold the children which are spawned
     let mut children = vec![];
 
-    let begin = 0;
-    let count = 1;
+    let begin = 837;
+    let count = 4;
     for seed in begin..begin + count {
         // spin up another thread
         children.push(thread::spawn(move || {

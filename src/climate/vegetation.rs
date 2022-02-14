@@ -61,11 +61,11 @@ impl From<&Vege> for Zone {
             Vege::Prairie => Self::new(0.36, -0.24, 3.0, 18.0),
             Vege::Savanna => Self::new(0.42, 0.0, 24.0, 36.0),
             Vege::Sand => Self::new(0.18, 0.0, 27.0, 36.0),
-            Vege::Shrub => Self::new(0.54, -0.54, 12.0, 24.0),
-            Vege::Taiga => Self::new(0.96, 0.36, 0.0, 12.0),
+            Vege::Shrub => Self::new(0.54, -0.48, 12.0, 24.0),
+            Vege::Taiga => Self::new(0.96, 0.24, 0.0, 12.0),
             Vege::Coniferous => Self::new(0.96, 0.12, 3.0, 18.0),
             Vege::Decideous => Self::new(0.96, 0.0, 12.0, 24.0),
-            Vege::Monsoon => Self::new(0.84, 0.72, 18.0, 36.0),
+            Vege::Monsoon => Self::new(0.84, 0.54, 18.0, 36.0),
             Vege::Broadleaf => Self::new(1.08, 0.0, 24.0, 24.0),
         }
     }
