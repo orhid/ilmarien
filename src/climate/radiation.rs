@@ -5,10 +5,16 @@ use crate::{
         flux::Flux,
         honeycomb::{Hexagon, HoneyCellPlanar},
     },
-    vars::*,
+    climate::geology::INIT_OCEAN_LEVEL,
 };
 use log::trace;
 use rayon::prelude::*;
+use std::f64::consts::TAU;
+
+const SOL_DETAIL: i32 = 12; // radius of suns taken for insolation calculation
+const SOL_HEIGHT: f64 = 1.0; // altitue of the sun
+const SOL_XDEV: f64 = 0.08; // amplidute of solar deviation
+const SOL_YDEV: f64 = 0.12; // amplidute of solar deviation
 
 /* # insolation */
 
@@ -17,96 +23,89 @@ fn vector_elevation(datum: &DatumRe, elevation: f64) -> [f64; 3] {
     [cdatum.x, cdatum.y, elevation]
 }
 
-fn insolation_sol(datum: &DatumRe, sol: [f64; 3]) -> f64 {
+fn insolation_sol(pnt: [f64; 3], sol: [f64; 3]) -> f64 {
     // turns out, the influence of both elevation and slope is negligable
-    let pnt = vector_elevation(datum, 0.0);
     let solward = [sol[0] - pnt[0], sol[1] - pnt[1], sol[2] - pnt[2]];
     let solward_norm = solward.map(|j| j.powi(2)).iter().sum::<f64>().sqrt();
     solward_norm.powi(-2) * solward[2] * solward_norm.recip()
 }
 
 fn insolation_dt(datum: &DatumRe, solar_pos: f64) -> f64 {
+    // should return numbers from the [0,1] interval
+    // mean at around 0.3
+
     DatumZa { x: 0, y: 0 }
         .ball_planar(SOL_DETAIL)
-        .into_iter()
+        .into_par_iter()
         .map(|sol| {
             insolation_sol(
-                datum,
+                vector_elevation(datum, 0.0),
                 vector_elevation(
                     &(DatumRe::from(sol)
                         + DatumRe {
-                            x: 0.0,
-                            y: solar_pos,
+                            x: SOL_XDEV * (TAU * solar_pos).cos(),
+                            y: SOL_YDEV * (TAU * solar_pos).sin(),
                         }),
                     SOL_HEIGHT,
                 ),
             )
         })
         .sum::<f64>()
+        .mul_add(2.56, -5.57573)
 }
 
-/// calculate insolation – the amount of radiation reaching the surface over a single day
-pub fn insolation(resolution: usize, solar_pos: f64) -> Brane<f64> {
-    trace!("calculating insolation model");
+/// coldest possible temperature at zero continentality
+const TMP_MINSTABLE: f64 = 0.18;
+
+fn temperature_oceanlv_dt(month: f64, datum: &DatumRe, continentality: f64) -> f64 {
+    let insolation = insolation_dt(datum, month); // * albedo
+    insolation + TMP_MINSTABLE * insolation.mul_add(-3.0, 1.0) * continentality.mul_add(-1.0, 1.0)
+}
+
+/// temperature values at ocean level
+pub fn temperature_oceanlv(month: f64, continentality: &Brane<f64>) -> Brane<f64> {
+    trace!("calculating temperature model");
 
     // should return numbers from the [0,1] interval
-    // mean at around 0.3
     Brane::from(
-        (0..resolution.pow(2))
+        (0..continentality.resolution.pow(2))
             .into_par_iter()
-            .map(|j| insolation_dt(&DatumZa::enravel(j, resolution).cast(resolution), solar_pos))
+            .map(|j| {
+                temperature_oceanlv_dt(
+                    month,
+                    &DatumZa::enravel(j, continentality.resolution).cast(continentality.resolution),
+                    continentality.grid[j],
+                )
+            })
             .collect::<Vec<f64>>(),
     )
-    .mul_add(2.56, -5.57573)
 }
 
-/* # temperature */
-
-fn temperature_update_ix(insolation: f64, temperature: f64, continentality: f64) -> f64 {
-    // this converges to insolation ^ 1.44.recip() for continentality one
-    // for exponent above two it becomes chaotic in temperature for large enough insolation
-    //   as this is basically the logistic map
-    // could also include albedo:
-    //   continentality * (albedo * (insolation - temperature.powf(1.44)) + temperature) + ...
-    continentality * (insolation - temperature.powf(1.44) + temperature)
-        + (1.0 - continentality) * temperature
-}
-
-/// update temperature values based on insolation
-pub fn temperature_update(
-    insolation: &Brane<f64>,
-    temperature: &mut Brane<f64>,
-    continentality: &Brane<f64>,
-) {
-    trace!("updating temperature model");
-
-    for j in 0..temperature.resolution.pow(2) {
-        temperature.grid[j] = temperature_update_ix(
-            insolation.grid[j],
-            temperature.grid[j],
-            continentality.grid[j],
-        );
-    }
-}
+const RATE_LAPSE: f64 = 0.72;
 
 /// calculate temperature lapse rate
-pub fn lapse(altitude: f64) -> f64 {
-    (altitude - INIT_OCEAN_LEVEL) * LAPSE_RATE
+fn lapse_ix(temperature: f64, altitude: f64) -> f64 {
+    temperature
+        * ((1.0 - altitude + INIT_OCEAN_LEVEL) + (altitude - INIT_OCEAN_LEVEL) * (1.0 - RATE_LAPSE))
 }
 
-/* # pressure */
-
-/* this can be useful later
-#[allow(dead_code)]
-fn pressure_elevation(pressure: f64, elevation: f64, temperature: f64) -> f64 {
-    pressure * (LAPSE_CONST * elevation * temperature.recip()).exp()
+pub fn temperature(temperature_oceanlv: &Brane<f64>, altitude: &Brane<f64>) -> Brane<f64> {
+    Brane::from(
+        (0..temperature_oceanlv.resolution.pow(2))
+            .into_par_iter()
+            .map(|j| lapse_ix(temperature_oceanlv.grid[j], altitude.grid[j]))
+            .collect::<Vec<f64>>(),
+    )
 }
-*/
 
 /// calculate pressure at ocean level
 fn pressure(temperature: &Brane<f64>) -> Brane<f64> {
     trace!("calculating pressure at ocean level");
-    temperature.clone().mul_add(-1.0, 1.0)
+    let smoothing_coef: f64 = 6.0_f64.recip();
+    temperature
+        .upscale((temperature.resolution as f64 * smoothing_coef) as usize)
+        .upscale(temperature.resolution)
+        .mul_add(-1.0, 1.0)
 }
 
 /// calculate pressure gradient
@@ -123,29 +122,28 @@ mod test {
     const EPSILON: f64 = 0.0000_01;
 
     #[test]
-    fn insolation_values() {
-        let brane = insolation(6, 0.0);
-        assert!(*brane.grid.iter().ord_subset_max().unwrap() < 1.0);
-        assert!(*brane.grid.iter().ord_subset_min().unwrap() > 0.0);
-        assert_float_eq!(brane.grid.iter().sum::<f64>() / 36.0, 0.3, abs <= 0.001);
+    fn temperature_oceanlv_values() {
+        let temp_ocean = temperature_oceanlv(0.0, &Brane::from(vec![0.0; 36]));
+        assert!(*temp_ocean.grid.iter().ord_subset_max().unwrap() < 1.0 - TMP_MINSTABLE);
+        assert!(*temp_ocean.grid.iter().ord_subset_min().unwrap() > TMP_MINSTABLE);
 
-        assert_float_eq!(brane.grid[0], 0.900178, abs <= EPSILON);
-        assert_float_eq!(brane.grid[8], 0.117151, abs <= EPSILON);
-        assert_float_eq!(brane.grid[24], 0.286945, abs <= EPSILON);
+        assert_float_eq!(temp_ocean.grid[0], 0.568309, abs <= EPSILON);
+        assert_float_eq!(temp_ocean.grid[8], 0.270136, abs <= EPSILON);
+        assert_float_eq!(temp_ocean.grid[24], 0.254137, abs <= EPSILON);
 
-        let brane = insolation(6, 0.1);
-        assert_float_ne!(brane.grid[0], 0.900178, abs <= EPSILON);
-        assert_float_ne!(brane.grid[8], 0.117151, abs <= EPSILON);
-        assert_float_ne!(brane.grid[24], 0.286945, abs <= EPSILON);
-    }
+        let temp_land = temperature_oceanlv(0.0, &Brane::from(vec![1.0; 36]));
+        assert!(*temp_land.grid.iter().ord_subset_max().unwrap() < 1.0);
+        assert!(*temp_land.grid.iter().ord_subset_min().unwrap() > 0.0);
+        assert_float_eq!(temp_land.grid.iter().sum::<f64>() / 36.0, 0.3, abs <= 0.001);
 
-    #[test]
-    fn temperature_values() {
-        let mut brane = insolation(6, 0.0);
-        temperature_update(&brane.clone(), &mut brane, &Brane::from(vec![1.0; 36]));
-        assert_float_eq!(brane.grid[0], 0.940882, abs <= EPSILON);
-        assert_float_eq!(brane.grid[8], 0.188699, abs <= EPSILON);
-        assert_float_eq!(brane.grid[24], 0.408226, abs <= EPSILON);
+        assert_float_eq!(temp_land.grid[0], 0.844150, abs <= EPSILON);
+        assert_float_eq!(temp_land.grid[8], 0.195948, abs <= EPSILON);
+        assert_float_eq!(temp_land.grid[24], 0.161167, abs <= EPSILON);
+
+        let temp_land = temperature_oceanlv(0.1, &Brane::from(vec![1.0; 36]));
+        assert_float_eq!(temp_land.grid[0], 0.844150, abs <= EPSILON);
+        assert_float_eq!(temp_land.grid[8], 0.195948, abs <= EPSILON);
+        assert_float_eq!(temp_land.grid[24], 0.161167, abs <= EPSILON);
     }
 
     #[test]
@@ -154,7 +152,7 @@ mod test {
             (0..36).map(|j| j as f64 / 36.0).collect::<Vec<f64>>(),
         ));
         assert_float_eq!(brane.grid[0], 1.0, abs <= EPSILON);
-        assert_float_eq!(brane.grid[8], 0.777777, abs <= EPSILON);
-        assert_float_eq!(brane.grid[24], 0.333333, abs <= EPSILON);
+        assert_float_eq!(brane.grid[8], 1.0, abs <= EPSILON);
+        assert_float_eq!(brane.grid[24], 1.0, abs <= EPSILON);
     }
 }

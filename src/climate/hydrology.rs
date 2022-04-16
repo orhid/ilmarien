@@ -5,11 +5,9 @@ use crate::{
         flux::Flux,
         honeycomb::{ball_cone_volume, HoneyCellToroidal},
     },
-    climate::vegetation::Vege,
-    vars::*,
+    climate::vegetation::{hydro_potential, Vege},
 };
-use log::trace;
-use ord_subset::OrdSubsetIterExt;
+use log::{debug, trace};
 use petgraph::{
     graph::{Graph, NodeIndex},
     visit::EdgeRef,
@@ -22,8 +20,8 @@ use rayon::prelude::*;
 /* ## evaporation */
 
 /// potential amount of water that could be evaporated
-pub fn evaporation(temperature: &Brane<f64>) -> Brane<f64> {
-    trace!("calculating evaporation model");
+pub fn potential_evaporation(temperature: &Brane<f64>) -> Brane<f64> {
+    trace!("calculating potential evaporation model");
     Brane::from(
         (0..temperature.resolution.pow(2))
             .into_par_iter()
@@ -33,26 +31,25 @@ pub fn evaporation(temperature: &Brane<f64>) -> Brane<f64> {
 }
 
 /// actual amount of water released into the atmosphere
-pub fn evapotranspiration(
-    evaporation: &Brane<f64>,
-    vegetation: &Brane<Option<Vege>>,
-) -> Brane<f64> {
-    trace!("calculating evapotranspiration model");
+pub fn evaporation(potential: &Brane<f64>, vegetation: &Brane<Option<Vege>>) -> Brane<f64> {
+    trace!("calculating evaporation model");
     Brane::from(
-        (0..evaporation.resolution.pow(2))
+        (0..potential.resolution.pow(2))
             .into_par_iter()
-            .map(|j| {
-                evaporation.grid[j]
-                    * match &vegetation.grid[j] {
-                        Some(vege) => vege.water(),
-                        None => 0.84,
-                    }
-            })
+            .map(|j| potential.grid[j].min(hydro_potential(vegetation.grid[j])))
             .collect::<Vec<f64>>(),
     )
 }
 
 /* ## rainfall */
+
+const DROP_BASE: f64 = 0.04; // base amount of moisture dropped at every cell
+const DROP_LEVEL_FACTOR: f64 = 0.72; // level difference multiplicative factor
+const DROP_UPHILL: f64 = 0.18; // fraction of rain dropped uphill
+                               //const RAIN_RADIUS_FACTOR: f64 = 54.0;
+const RAIN_RADIUS_MAX: f64 = 12.0; // maximal distance from cell for rain drop
+const RAIN_AMOUNT_MAX: f64 = 3.0;
+const RAIN_CORRECTION: f64 = 0.42;
 
 fn rainfall_nd(
     target_level: f64,
@@ -63,8 +60,8 @@ fn rainfall_nd(
     rainfall: &mut Brane<f64>,
 ) -> f64 {
     let datum = &gradient[node];
-    let level = elevation.get(&datum.cast(RAIN_RES));
-    let moisture = evaporation.get(&datum.cast(RAIN_RES))
+    let level = elevation.read(datum);
+    let moisture = evaporation.read(datum)
         + gradient
             .edges_directed(node, Direction::Incoming)
             .map(|edge| {
@@ -78,33 +75,25 @@ fn rainfall_nd(
                 )
             })
             .sum::<f64>();
-    let frac = moisture
-        * *[
-            1.0,
-            *[(target_level - level) * 8.0, FLAT_RAIN]
-                .iter()
-                .ord_subset_max()
-                .unwrap(),
-        ]
-        .iter()
-        .ord_subset_min()
-        .unwrap();
+    let drop: f64 =
+        moisture.min(DROP_BASE + DROP_LEVEL_FACTOR * (target_level - level).max(0.0) * moisture);
 
-    let radius = RAIN_RES.div_euclid(18) as i32;
+    let radius: i32 = RAIN_RADIUS_MAX as i32;
     let volume = ball_cone_volume(radius) as f64;
-    for nbr in datum.ball_toroidal(radius, RAIN_RES as i32) {
-        rainfall.grid[nbr.unravel(RAIN_RES)] += [
-            (frac
-                * (radius - datum.dist_toroidal(&nbr, RAIN_RES as i32) + 1) as f64
+    for nbr in datum.ball_toroidal(radius, rainfall.resolution as i32) {
+        rainfall.grid[nbr.unravel(rainfall.resolution)] = (rainfall.grid
+            [nbr.unravel(rainfall.resolution)]
+            + drop
+                * if elevation.read(&nbr) < target_level {
+                    1.0
+                } else {
+                    DROP_UPHILL
+                }
+                * (radius - datum.dist_toroidal(&nbr, rainfall.resolution as i32) + 1) as f64
                 * volume.recip())
-            .powf(0.87),
-            0.0084,
-        ]
-        .iter()
-        .ord_subset_min()
-        .unwrap()
+        .min(RAIN_AMOUNT_MAX);
     }
-    moisture - frac
+    moisture - drop
 }
 
 /// calculate the amount of rainfall reaching the surface
@@ -116,7 +105,8 @@ pub fn rainfall(elevation: &Brane<f64>, evaporation: &Brane<f64>, wind: &Flux<f6
     // a solution to both of those problems would be to calculate rain at a set resolution
     //      and then use regression to interpolate to a higher resolution
 
-    let mut rainfall = Brane::<f64>::zeros(RAIN_RES);
+    let mut rainfall = Brane::<f64>::zeros(elevation.resolution);
+    debug!("{}", wind.roots.len());
     for node in &wind.roots {
         rainfall_nd(
             0.0,
@@ -128,11 +118,11 @@ pub fn rainfall(elevation: &Brane<f64>, evaporation: &Brane<f64>, wind: &Flux<f6
         );
     }
     rainfall.variable = "rainfall".to_string();
-    if elevation.resolution == rainfall.resolution {
-        rainfall
-    } else {
-        rainfall.upscale(elevation.resolution)
-    }
+    let correction = RAIN_CORRECTION
+        * evaporation.grid.iter().sum::<f64>()
+        * rainfall.grid.iter().sum::<f64>().recip();
+
+    rainfall * correction
 }
 
 /* # watershed */
@@ -176,8 +166,8 @@ mod test {
     const EPSILON: f64 = 0.0000_01;
 
     #[test]
-    fn evaporation_values() {
-        let brane = evaporation(&Brane::from(
+    fn potential_evaporation_values() {
+        let brane = potential_evaporation(&Brane::from(
             (0..36).map(|j| j as f64 / 36.0).collect::<Vec<f64>>(),
         ));
         assert_float_eq!(brane.grid[0], 0.0, abs <= EPSILON);
@@ -186,34 +176,35 @@ mod test {
     }
 
     #[test]
-    fn evapotraspiration_values() {
-        let brane = evapotranspiration(
-            &Brane::from((0..4).map(|j| j as f64 / 3.0).collect::<Vec<f64>>()),
-            &Brane::from(vec![
-                Some(Vege::Broadleaf),
-                None,
-                Some(Vege::Broadleaf),
-                Some(Vege::Prairie),
-            ]),
+    fn evaporation_values() {
+        let brane = evaporation(
+            &Brane::from(vec![0.0, 1.0, 0.1, 0.3]),
+            &Brane::from(vec![None, None, Some(Vege::Prairie), Some(Vege::Prairie)]),
         );
         assert_float_eq!(brane.grid[0], 0.0, abs <= EPSILON);
-        assert_float_eq!(brane.grid[1], 0.279999, abs <= EPSILON);
-        assert_float_eq!(brane.grid[2], 0.666666, abs <= EPSILON);
+        assert_float_eq!(brane.grid[1], 0.84, abs <= EPSILON);
+        assert_float_eq!(brane.grid[2], 0.1, abs <= EPSILON);
         assert_float_eq!(brane.grid[3], 0.18, abs <= EPSILON);
     }
 
     #[test]
     fn rainfall_values() {
         let brane = rainfall(
-            &Brane::from((0..144).map(|j| j as f64).collect::<Vec<f64>>()),
-            &Brane::from((0..144).map(|j| (j % 3) as f64).collect::<Vec<f64>>()),
+            &Brane::from(
+                (0..144)
+                    .map(|j| (j % 12 + j / 12) as f64 / 24.0)
+                    .collect::<Vec<f64>>(),
+            ),
+            &Brane::from(vec![1.0; 144]),
             &Flux::<f64>::from(&Brane::from(
-                (0..144).map(|j| j as f64).collect::<Vec<f64>>(),
+                (0..144)
+                    .map(|j| (24 - (j % 12 + j / 12)) as f64 / 24.0)
+                    .collect::<Vec<f64>>(),
             )),
         );
-        assert_float_eq!(brane.grid[0], 0.100471, abs <= EPSILON);
-        assert_float_eq!(brane.grid[12], 0.051076, abs <= EPSILON);
-        assert_float_eq!(brane.grid[72], 0.0, abs <= EPSILON);
+        assert_float_eq!(brane.grid[0], 0.531359, abs <= EPSILON);
+        assert_float_eq!(brane.grid[12], 0.504252, abs <= EPSILON);
+        assert_float_eq!(brane.grid[72], 0.500678, abs <= EPSILON);
     }
 
     /*

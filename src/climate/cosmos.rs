@@ -7,7 +7,7 @@ use crate::{
     climate::{
         chart::{Chart, Zone},
         hydrology::{evaporation, evapotranspiration, rainfall},
-        radiation::{insolation, lapse, temperature_update, wind},
+        radiation::{insolation, lapse_ix, temperature_update, wind},
         vegetation::Vege,
     },
     vars::*,
@@ -15,6 +15,19 @@ use crate::{
 use log::trace;
 use rayon::prelude::*;
 use std::collections::VecDeque;
+
+#[derive(Clone)]
+pub struct Altitude(f64);
+
+impl Altitude {
+    pub fn is_ocean(&self, ocean: f64) -> bool {
+        self.0 < ocean
+    }
+
+    pub fn with_ocean(&self, ocean: f64) -> f64 {
+        self.0.max(ocean)
+    }
+}
 
 #[derive(Clone)]
 pub struct Cell {
@@ -163,7 +176,7 @@ impl Cosmos {
         for j in 0..self.brane.resolution.pow(2) {
             let altitude = self.brane.grid[j].altitude(self.ocean);
             self.brane.grid[j].chart.push(
-                temperature.grid[j] - lapse(altitude),
+                temperature.grid[j] - lapse_ix(altitude),
                 rainfall.grid[j],
                 evaporation.grid[j],
                 cycle,

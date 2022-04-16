@@ -1,4 +1,4 @@
-use crate::climate::{cosmos::Cell, vegetation::Vege};
+use crate::climate::vegetation::Vege;
 
 /* # colour spaces */
 
@@ -132,6 +132,26 @@ impl Ink<f64> for BiHueInk {
 
 /* ## geographic inks */
 
+pub struct TemperatureInk;
+
+impl Ink<f64> for TemperatureInk {
+    fn paint(&self, sample: f64) -> String {
+        BiHueInk::new(0.96, 0.54, 0.92).paint(sample.mul_add(1.0, -0.3))
+    }
+}
+
+pub struct CelciusInk;
+
+impl Ink<f64> for CelciusInk {
+    fn paint(&self, sample: f64) -> String {
+        BiHueInk::new(0.96, 0.54, 0.92).paint(if sample > 0.0 {
+            sample / 36.0
+        } else {
+            sample / 6.0
+        })
+    }
+}
+
 pub struct TopographyInk {
     ocean_level: f64,
 }
@@ -142,10 +162,9 @@ impl TopographyInk {
     }
 }
 
-impl Ink<Cell> for TopographyInk {
-    fn paint(&self, sample: Cell) -> String {
-        let elevation = sample.altitude;
-        let ocean = self.ocean_level - elevation;
+impl Ink<f64> for TopographyInk {
+    fn paint(&self, sample: f64) -> String {
+        let ocean = self.ocean_level - sample;
         if ocean > 0.0 {
             if ocean < 2.0 / 256.0 {
                 RGB::new(162, 184, 170).paint()
@@ -156,21 +175,21 @@ impl Ink<Cell> for TopographyInk {
             } else {
                 RGB::new(53, 89, 92).paint()
             }
-        } else if elevation < self.ocean_level {
+        } else if sample < self.ocean_level {
             RGB::new(223, 235, 217).paint()
-        } else if elevation < self.ocean_level + 2.0 / 256.0 {
+        } else if sample < self.ocean_level + 2.0 / 256.0 {
             RGB::new(243, 245, 237).paint()
-        } else if elevation < self.ocean_level + 4.0 / 256.0 {
+        } else if sample < self.ocean_level + 4.0 / 256.0 {
             RGB::new(233, 235, 216).paint()
-        } else if elevation < self.ocean_level + 8.0 / 256.0 {
+        } else if sample < self.ocean_level + 8.0 / 256.0 {
             RGB::new(214, 213, 188).paint()
-        } else if elevation < self.ocean_level + 16.0 / 256.0 {
+        } else if sample < self.ocean_level + 16.0 / 256.0 {
             RGB::new(199, 191, 163).paint()
-        } else if elevation < self.ocean_level + 32.0 / 256.0 {
+        } else if sample < self.ocean_level + 32.0 / 256.0 {
             RGB::new(184, 165, 134).paint()
-        } else if elevation < self.ocean_level + 64.0 / 256.0 {
+        } else if sample < self.ocean_level + 64.0 / 256.0 {
             RGB::new(163, 131, 104).paint()
-        } else if elevation < self.ocean_level + 128.0 / 256.0 {
+        } else if sample < self.ocean_level + 128.0 / 256.0 {
             RGB::new(138, 95, 80).paint()
         } else {
             RGB::new(115, 71, 67).paint()
@@ -201,6 +220,7 @@ impl Ink<Option<Vege>> for KoppenInk {
         }
     }
 }
+
 /*
 Koppen::Af => RGB::new(34, 70, 122).paint(),
 Koppen::Am => RGB::new(43, 94, 153).paint(),

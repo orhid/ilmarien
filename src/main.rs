@@ -1,22 +1,26 @@
 #[allow(unused_imports)]
-use ilmarien::carto::{colour as clr, render::Renderable};
-use ilmarien::climate::{cosmos as csm, geology as glg};
+use ilmarien::{
+    carto::{colour as clr, render::Renderable},
+    climate::simulation as sim,
+};
 use log::info;
-use pretty_env_logger;
-use std::thread;
+//use std::thread;
 
 #[allow(dead_code)]
-fn test() {}
+fn test() {
+    sim::simulate(432, 0);
+}
 
+/*
 #[allow(dead_code)]
 fn test_sim() {
-    let res: usize = 432;
+    let res: usize = 216;
 
     // make a vector to hold the children which are spawned
     let mut children = vec![];
 
     let begin = 837;
-    let count = 4;
+    let count = 1;
     for seed in begin..begin + count {
         // spin up another thread
         children.push(thread::spawn(move || {
@@ -34,11 +38,11 @@ fn test_sim() {
         let _ = child.join();
     }
 }
+*/
 
 fn main() {
     pretty_env_logger::init_timed();
     info!("initialising ilmarien");
-    test_sim();
-    //test();
+    test();
     info!("computation completed")
 }
