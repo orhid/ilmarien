@@ -7,7 +7,7 @@ use crate::{
     },
     climate::vegetation::{hydro_potential, Vege},
 };
-use log::{debug, trace};
+use log::trace;
 use petgraph::{
     graph::{Graph, NodeIndex},
     visit::EdgeRef,
@@ -106,7 +106,6 @@ pub fn rainfall(elevation: &Brane<f64>, evaporation: &Brane<f64>, wind: &Flux<f6
     //      and then use regression to interpolate to a higher resolution
 
     let mut rainfall = Brane::<f64>::zeros(elevation.resolution);
-    debug!("{}", wind.roots.len());
     for node in &wind.roots {
         rainfall_nd(
             0.0,
@@ -127,7 +126,6 @@ pub fn rainfall(elevation: &Brane<f64>, evaporation: &Brane<f64>, wind: &Flux<f6
 
 /* # watershed */
 
-/*
 fn shed_nd(
     node: NodeIndex,
     rainfall: &Brane<f64>,
@@ -141,14 +139,12 @@ fn shed_nd(
             .edges_directed(node, Direction::Incoming)
             .map(|edge| shed_nd(edge.source(), rainfall, elevation_flux, shed))
             .sum::<f64>();
-    shed.insert(&datum, moisture);
+    shed.insert(datum, moisture);
     moisture
 }
 
 /// calculate the amount of water flowing down to every datum
 pub fn shed(elevation_flux: &Flux<f64>, rainfall: &Brane<f64>) -> Brane<f64> {
-    trace!("calculating watershed");
-
     let mut shed = Brane::<f64>::zeros(elevation_flux.resolution);
     for node in &elevation_flux.roots {
         shed_nd(*node, rainfall, elevation_flux, &mut shed);
@@ -157,7 +153,6 @@ pub fn shed(elevation_flux: &Flux<f64>, rainfall: &Brane<f64>) -> Brane<f64> {
     shed.variable = "shed".to_string();
     shed
 }
-*/
 
 #[cfg(test)]
 mod test {

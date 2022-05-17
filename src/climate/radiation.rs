@@ -141,9 +141,9 @@ mod test {
         assert_float_eq!(temp_land.grid[24], 0.161167, abs <= EPSILON);
 
         let temp_land = temperature_oceanlv(0.1, &Brane::from(vec![1.0; 36]));
-        assert_float_eq!(temp_land.grid[0], 0.844150, abs <= EPSILON);
-        assert_float_eq!(temp_land.grid[8], 0.195948, abs <= EPSILON);
-        assert_float_eq!(temp_land.grid[24], 0.161167, abs <= EPSILON);
+        assert_float_ne!(temp_land.grid[0], 0.844150, abs <= EPSILON);
+        assert_float_ne!(temp_land.grid[8], 0.195948, abs <= EPSILON);
+        assert_float_ne!(temp_land.grid[24], 0.161167, abs <= EPSILON);
     }
 
     #[test]

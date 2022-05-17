@@ -8,8 +8,23 @@ use log::info;
 
 #[allow(dead_code)]
 fn test() {
-    sim::simulate(432, 0);
+    let res: usize = 432;
+    let (j, k) = (2u32.pow(12), 3u32.pow(9));
+    for s in 0..1 {
+        sim::simulate(res, j * s + k);
+    }
 }
+
+/*
+fn calculate_mdes() {
+    use ilmarien::climate::geology::bedrock_level;
+    let res: usize = 432;
+    let (j, k) = (78615, 57815);
+    let mdes = (0..72)
+        .map(|seed| bedrock_level(res, k * seed + j).mde())
+        .collect::<Vec<f64>>();
+    dbg!(mdes.iter().sum::<f64>() / mdes.len() as f64);
+*/
 
 /*
 #[allow(dead_code)]

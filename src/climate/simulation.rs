@@ -3,8 +3,7 @@ use crate::carto::{brane::Brane, colour as clr, render::Renderable};
 use crate::climate::{
     chart::{Chart, Zone},
     geology::{
-        altitude_with_ocean, bedrock_level, bedrock_vege, continentality, ocean_tiles,
-        INIT_OCEAN_LEVEL,
+        altitude_with_ocean, bedrock_level, bedrock_vege, continentality, ocean, ocean_tiles,
     },
     hydrology::{evaporation, potential_evaporation, rainfall},
     radiation::{temperature, temperature_oceanlv, wind},
@@ -22,12 +21,57 @@ impl Month {
     pub fn new(temp: Brane<f64>, rain: Brane<f64>, pevt: Brane<f64>) -> Self {
         Self { temp, rain, pevt }
     }
+
+    pub fn upscale(self, altitude: &Brane<f64>) -> Self {
+        let resolution = altitude.resolution;
+        Self::new(
+            self.temp.upscale(resolution),
+            self.rain.upscale(resolution),
+            self.pevt.upscale(resolution),
+        )
+    }
 }
 
-const YEAR_LEN: usize = 16;
+const YEAR_LEN: usize = 6;
 const RES_SMALL: usize = 144;
 
-fn chartise(year: &Vec<Month>) -> Brane<Chart> {
+/*
+fn total_rain(year: &[Month]) -> Brane<f64> {
+    Brane::from(
+        (0..year
+            .get(0)
+            .expect("cannot process an empty year")
+            .temp
+            .resolution
+            .pow(2))
+            .into_iter()
+            .map(|jndex| {
+                year[year.len().saturating_sub(YEAR_LEN)..]
+                    .iter()
+                    .map(|month| month.rain.grid[jndex])
+                    .sum::<f64>()
+                    * (YEAR_LEN as f64).recip()
+                    * 24.0
+            })
+            .collect::<Vec<f64>>(),
+    )
+}
+*/
+
+fn predict(mut year_small: Vec<Month>, altitude: &Brane<f64>) -> Vec<Month> {
+    let mut year = Vec::<Month>::new();
+    for month in year_small
+        .drain(year_small.len().saturating_sub(YEAR_LEN)..)
+        .collect::<Vec<Month>>()
+        .into_iter()
+    {
+        //month.upscale()
+        year.push(month.upscale(altitude));
+    }
+    year
+}
+
+fn chartise(year: &[Month]) -> Brane<Chart> {
     let resolution = year
         .get(0)
         .expect("cannot process an empty year")
@@ -37,13 +81,9 @@ fn chartise(year: &Vec<Month>) -> Brane<Chart> {
         .into_iter()
         .map(|_| Chart::new())
         .collect::<Vec<Chart>>();
-    for month in &year[match year.len().checked_sub(YEAR_LEN) {
-        Some(v) => v,
-        None => 0,
-    }..]
-    {
-        for jndex in 0..resolution.pow(2) {
-            charts[jndex].push(
+    for month in &year[year.len().saturating_sub(YEAR_LEN)..] {
+        for (jndex, chart) in charts.iter_mut().enumerate().take(resolution.pow(2)) {
+            chart.push(
                 month.temp.grid[jndex],
                 month.rain.grid[jndex],
                 month.pevt.grid[jndex],
@@ -90,70 +130,57 @@ fn simulate_month(
 pub fn simulate(resolution: usize, seed: u32) {
     // # generate bedrock
     let altitude = bedrock_level(resolution, seed);
-    let mut altitude_small = altitude.upscale(RES_SMALL);
-    let continentality_small = continentality(&altitude_small, INIT_OCEAN_LEVEL);
+    let ocean_level = ocean(&altitude);
+    let altitude_small = altitude.upscale(RES_SMALL);
+    let continentality_small = continentality(&altitude_small, ocean_level);
     let mut vege_small = bedrock_vege(&altitude_small);
 
-    altitude_small.variable = "alt".to_string();
-    altitude_small.render(clr::TopographyInk::new(0.25));
-
     // # dry run
-    let mut dry = Vec::<Month>::new();
-    for sol in 0..(YEAR_LEN + 1) {
-        dry.push(simulate_month(
+    let mut year_small = Vec::<Month>::new();
+    for sol in 0..(YEAR_LEN) {
+        year_small.push(simulate_month(
             sol as f64 / YEAR_LEN as f64,
-            INIT_OCEAN_LEVEL,
+            ocean_level,
             &altitude_small,
             &continentality_small,
             &vege_small,
         ));
-        let charts = chartise(&dry);
-        vege_small = veges(&charts, &altitude_small, INIT_OCEAN_LEVEL);
+        vege_small = veges(&chartise(&year_small), &altitude_small, ocean_level);
     }
 
+    //vege_small.variable = format!("vege-{}", seed);
+    //vege_small.render(clr::KoppenInk);
+
     /*
-    let charts = chartise(&dry);
-    let mut a = Brane::from(
-        (0..charts.resolution.pow(2))
-            .into_par_iter()
-            .map(|j| charts.grid[j].aridity())
-            .collect::<Vec<f64>>(),
-    );
-    a.variable = "aridity".to_string();
-    a.stats();
-    a.render(clr::HueInk::new(0.12, 0.92));
-    let mut s = Brane::from(
-        (0..charts.resolution.pow(2))
-            .into_par_iter()
-            .map(|j| charts.grid[j].swing())
-            .collect::<Vec<f64>>(),
-    );
-    s.variable = "swing".to_string();
-    s.stats();
-    s.render(clr::BiHueInk::new(0.54, 0.04, 0.92));
-    let mut tmin = Brane::from(
-        (0..charts.resolution.pow(2))
-            .into_par_iter()
-            .map(|j| charts.grid[j].tmin())
-            .collect::<Vec<f64>>(),
-    );
-    tmin.variable = "tmin".to_string();
-    tmin.stats();
-    tmin.render(clr::CelciusInk);
-    let mut tmax = Brane::from(
-        (0..charts.resolution.pow(2))
-            .into_par_iter()
-            .map(|j| charts.grid[j].tmax())
-            .collect::<Vec<f64>>(),
-    );
-    tmax.variable = "tmax".to_string();
-    tmax.stats();
-    tmax.render(clr::CelciusInk);
+    // # erode
+    erode(&mut altitude, &total_rain(&year_small).upscale(resolution));
+    let ocean_level = ocean(&altitude);
+    let mut altitude_small = altitude.upscale(RES_SMALL);
+    let continentality_small = continentality(&altitude_small, ocean_level);
     */
 
-    vege_small.variable = "vege".to_string();
-    vege_small.render(clr::KoppenInk);
+    // # eroded run
+    // let mut year_small = Vec::<Month>::new(); // use results from dry run
+    for sol in 0..(2 * YEAR_LEN + 1) {
+        year_small.push(simulate_month(
+            sol as f64 / YEAR_LEN as f64,
+            ocean_level,
+            &altitude_small,
+            &continentality_small,
+            &vege_small,
+        ));
+        vege_small = veges(&chartise(&year_small), &altitude_small, ocean_level);
+    }
 
-    // erosion
-    // eroded run
+    // # upscale
+    // upscale the last YEAR_LEN from year_small and use it to calculate veges on the full resolution map
+    //let continentality = continentality(&altitude, ocean_level);
+    let year = predict(year_small, &altitude);
+    let mut vege = veges(&chartise(&year), &altitude, ocean_level);
+    vege.variable = format!("vege-{}", seed);
+    vege.render(clr::KoppenInk);
+
+    // # finish
+    // score the generated cosmos
+    // save the relevant bits of information
 }

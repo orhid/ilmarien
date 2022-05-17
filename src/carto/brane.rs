@@ -7,6 +7,7 @@ use num_traits::{identities::Zero, MulAdd};
 use rayon::prelude::*;
 use splines::{Interpolation, Key, Spline};
 use std::{
+    collections::HashMap,
     fs,
     iter::FromIterator,
     ops::{Add, Div, Mul, Sub},
@@ -187,6 +188,7 @@ impl_op_external!(Div, div, /);
 impl<T: MulAdd + Copy> Brane<T>
 where
     Vec<T>: FromIterator<<T as MulAdd>::Output>,
+    T: MulAdd<Output = T>,
 {
     pub fn mul_add(self, xmul: T, xadd: T) -> Self {
         Self {
@@ -197,6 +199,12 @@ where
                 .collect::<Vec<T>>(),
             resolution: self.resolution,
             variable: format!("muladd-{}", self.variable),
+        }
+    }
+
+    pub fn mul_add_inplace(&mut self, xmul: T, xadd: T) {
+        for value in self.grid.iter_mut() {
+            *value = value.mul_add(xmul, xadd);
         }
     }
 }
@@ -309,27 +317,84 @@ impl Brane<f64> {
         Self::from(&Brane::<u16>::load(variable))
     }
 
+    pub fn min(&self) -> f64 {
+        *self
+            .grid
+            .iter()
+            .min_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap()
+    }
+
+    pub fn mde(&self) -> f64 {
+        let buckets = 72;
+        let mut histogram = HashMap::new();
+        for j in 0..buckets {
+            histogram.insert(j, 0);
+        }
+        for value in self.grid.iter() {
+            let counter = histogram
+                .entry((value * buckets as f64).floor() as usize)
+                .or_insert(0);
+            *counter += 1;
+        }
+        let maxbucket = *histogram
+            .iter()
+            .max_by(|a, b| a.1.cmp(b.1))
+            .map(|(k, _v)| k)
+            .unwrap();
+        (maxbucket as f64 + 0.5) * (buckets as f64).recip()
+    }
+
+    pub fn max(&self) -> f64 {
+        *self
+            .grid
+            .iter()
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap()
+    }
+
+    pub fn normalise(&mut self) {
+        let (min, max) = (self.min(), self.max());
+        for value in self.grid.iter_mut() {
+            *value = value
+                .mul_add((max - min).recip(), -min * (max - min).recip())
+                .min(1.)
+                .max(0.);
+        }
+    }
+
     /// print out basic statistical information
     pub fn stats(&self) {
         println!("stats for {}", self.variable);
-        println!(
-            "min: {}",
-            self.grid
-                .iter()
-                .min_by(|a, b| a.partial_cmp(b).unwrap())
-                .unwrap()
-        );
+        println!("min: {}", self.min());
+        println!("mde: {}", self.mde());
         println!(
             "med: {}",
             self.grid.iter().sum::<f64>() / self.grid.len() as f64
         );
-        println!(
-            "max: {}",
-            self.grid
-                .iter()
-                .max_by(|a, b| a.partial_cmp(b).unwrap())
-                .unwrap()
-        );
+        println!("max: {}", self.max());
+    }
+
+    pub fn hist(&self) {
+        let buckets = 42;
+        let mut histogram = HashMap::new();
+        for j in 0..buckets {
+            histogram.insert(j, 0);
+        }
+        for value in self.grid.iter() {
+            let counter = histogram
+                .entry((value * buckets as f64).floor() as usize)
+                .or_insert(0);
+            *counter += 1;
+        }
+        for j in 0..buckets {
+            println!(
+                "{:.2}:{:.2} : {:.4}",
+                j as f64 / buckets as f64,
+                (j + 1) as f64 / buckets as f64,
+                *histogram.get(&j).unwrap() as f64 / self.grid.len() as f64
+            );
+        }
     }
 }
 

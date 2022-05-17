@@ -92,12 +92,10 @@ impl From<&Zone> for Vege {
                         Vege::Frost
                     } else if zone.tmin > 18.0 {
                         Vege::Broadleaf // rainforest
+                    } else if 3.0 * zone.tmin + zone.tmax - 12.0 * zone.swing - 36.0 < 0.0 {
+                        Vege::Taiga // coniferous but wetter
                     } else {
-                        if 3.0 * zone.tmin + zone.tmax - 12.0 * zone.swing - 36.0 < 0.0 {
-                            Vege::Taiga // coniferous but wetter
-                        } else {
-                            Vege::Monsoon //decidous but wetter
-                        }
+                        Vege::Monsoon //decidous but wetter
                     }
                 }
                 a if a < 0.96 * ARID_FACTOR => {
@@ -105,12 +103,10 @@ impl From<&Zone> for Vege {
                         Vege::Frost
                     } else if zone.tmin > 24.0 {
                         Vege::Shrub
+                    } else if 9.0 * zone.tmin + zone.tmax - 36.0 * zone.swing - 60.0 < 0.0 {
+                        Vege::Coniferous
                     } else {
-                        if 9.0 * zone.tmin + zone.tmax - 36.0 * zone.swing - 60.0 < 0.0 {
-                            Vege::Coniferous
-                        } else {
-                            Vege::Decideous
-                        }
+                        Vege::Decideous
                     }
                 }
                 a if a < 1.44 * ARID_FACTOR => {
@@ -118,15 +114,12 @@ impl From<&Zone> for Vege {
                         Vege::Frost
                     } else if zone.tmin > 18.0 {
                         Vege::Savanna
+                    } else if zone.tmin + zone.tmax - 6.0 * zone.swing - 30.0 > 0.0 {
+                        Vege::Shrub
+                    } else if 5.0 * zone.tmin + 3.0 * zone.tmax + 24.0 * zone.swing - 24.0 < 0.0 {
+                        Vege::Tundra
                     } else {
-                        if zone.tmin + zone.tmax - 6.0 * zone.swing - 30.0 > 0.0 {
-                            Vege::Shrub
-                        } else if 5.0 * zone.tmin + 3.0 * zone.tmax + 24.0 * zone.swing - 24.0 < 0.0
-                        {
-                            Vege::Tundra
-                        } else {
-                            Vege::Prairie
-                        }
+                        Vege::Prairie
                     }
                 }
                 _ => {
