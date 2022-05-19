@@ -1,46 +1,28 @@
 #[allow(unused_imports)]
 use ilmarien::{
     carto::{colour as clr, render::Renderable},
-    climate::simulation as sim,
+    climate::cosmos::Cosmos,
 };
 use log::info;
-//use std::thread;
+use std::thread;
 
 #[allow(dead_code)]
-fn test() {
-    let res: usize = 432;
-    let (j, k) = (2u32.pow(12), 3u32.pow(9));
-    for s in 0..1 {
-        sim::simulate(res, j * s + k);
-    }
-}
+fn test() {}
 
-/*
-fn calculate_mdes() {
-    use ilmarien::climate::geology::bedrock_level;
-    let res: usize = 432;
-    let (j, k) = (78615, 57815);
-    let mdes = (0..72)
-        .map(|seed| bedrock_level(res, k * seed + j).mde())
-        .collect::<Vec<f64>>();
-    dbg!(mdes.iter().sum::<f64>() / mdes.len() as f64);
-*/
-
-/*
 #[allow(dead_code)]
 fn test_sim() {
-    let res: usize = 216;
+    let res: usize = 432;
 
     // make a vector to hold the children which are spawned
     let mut children = vec![];
 
-    let begin = 837;
+    let (j, k) = (2u32.pow(8), 3u32.pow(6));
     let count = 1;
-    for seed in begin..begin + count {
+    for s in 0..count {
+        let seed = j * s + k;
         // spin up another thread
         children.push(thread::spawn(move || {
-            let mut cosmos = csm::Cosmos::new(&glg::bedrock_level(res, seed));
-            cosmos.sim_climate(2, 12);
+            let cosmos = Cosmos::sim_new(res, seed);
             let mut vege = cosmos.vege();
             vege.variable = format!("vege-{}", seed);
             vege.render(clr::KoppenInk);
@@ -53,11 +35,10 @@ fn test_sim() {
         let _ = child.join();
     }
 }
-*/
 
 fn main() {
     pretty_env_logger::init_timed();
     info!("initialising ilmarien");
-    test();
+    test_sim();
     info!("computation completed")
 }

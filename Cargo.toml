@@ -6,23 +6,24 @@ edition = "2018"
 
 [dependencies]
 # base
-log = "0.4.14"
-pretty_env_logger = "0.4.0"
-rayon = { version = "1.5.1", default-features = false }
-num-traits = "0.2.14"
-ord_subset = "3.1.1"
+log = "0.4"
+pretty_env_logger = "0.4"
+rayon = { version = "1.5", default-features = false }
+num-traits = "0.2"
+ord_subset = "3.1"
 
 # rendering
 tiff = "0.7"
-svg = "0.10.0"
+svg = "0.10"
 
 # geography
-geo = { version = "0.18.0", default-features = false }
+geo = { version = "0.18", default-features = false }
 geo-booleanop = { git = "https://github.com/21re/rust-geo-booleanop" }
-geo-svg = "0.5.0"
-petgraph = "0.6.0"
-noise = { version = "0.7.0", default-features = false }
-splines = "4.0.0"
+geo-svg = "0.5"
+petgraph = "0.6"
+nalgebra = "0.31"
+noise = { version = "0.7", default-features = false }
+splines = "4.0"
 
 [dev-dependencies]
 float_eq = "0.6"

@@ -7,6 +7,7 @@ use crate::climate::{
     },
     hydrology::{evaporation, potential_evaporation, rainfall},
     radiation::{temperature, temperature_oceanlv, wind},
+    regression::predict_month,
     vegetation::Vege,
 };
 use rayon::prelude::*;
@@ -22,12 +23,26 @@ impl Month {
         Self { temp, rain, pevt }
     }
 
-    pub fn upscale(self, altitude: &Brane<f64>) -> Self {
-        let resolution = altitude.resolution;
+    pub fn upscale(
+        self,
+        altitude_smol: &Brane<f64>,
+        continentality_smol: &Brane<f64>,
+        altitude: &Brane<f64>,
+        continentality: &Brane<f64>,
+    ) -> Self {
+        let (t, _, p) = predict_month(
+            &self.temp,
+            &self.rain,
+            &self.pevt,
+            altitude_smol,
+            continentality_smol,
+            altitude,
+            continentality,
+        );
         Self::new(
-            self.temp.upscale(resolution),
-            self.rain.upscale(resolution),
-            self.pevt.upscale(resolution),
+            (self.temp.upscale(altitude.resolution) + t) * 2f64.recip(),
+            self.rain.upscale(altitude.resolution),
+            (self.pevt.upscale(altitude.resolution) + p) * 2f64.recip(),
         )
     }
 }
@@ -58,15 +73,20 @@ fn total_rain(year: &[Month]) -> Brane<f64> {
 }
 */
 
-fn predict(mut year_small: Vec<Month>, altitude: &Brane<f64>) -> Vec<Month> {
+fn predict(
+    mut year_small: Vec<Month>,
+    altitude_smol: &Brane<f64>,
+    continentality_smol: &Brane<f64>,
+    altitude: &Brane<f64>,
+    continentality: &Brane<f64>,
+) -> Vec<Month> {
     let mut year = Vec::<Month>::new();
     for month in year_small
         .drain(year_small.len().saturating_sub(YEAR_LEN)..)
         .collect::<Vec<Month>>()
         .into_iter()
     {
-        //month.upscale()
-        year.push(month.upscale(altitude));
+        year.push(month.upscale(altitude_smol, continentality_smol, altitude, continentality));
     }
     year
 }
@@ -82,7 +102,7 @@ fn chartise(year: &[Month]) -> Brane<Chart> {
         .map(|_| Chart::new())
         .collect::<Vec<Chart>>();
     for month in &year[year.len().saturating_sub(YEAR_LEN)..] {
-        for (jndex, chart) in charts.iter_mut().enumerate().take(resolution.pow(2)) {
+        for (jndex, chart) in charts.iter_mut().enumerate() {
             chart.push(
                 month.temp.grid[jndex],
                 month.rain.grid[jndex],
@@ -127,7 +147,7 @@ fn simulate_month(
     )
 }
 
-pub fn simulate(resolution: usize, seed: u32) {
+pub fn simulate(resolution: usize, seed: u32) -> (Brane<f64>, Brane<Chart>) {
     // # generate bedrock
     let altitude = bedrock_level(resolution, seed);
     let ocean_level = ocean(&altitude);
@@ -147,9 +167,6 @@ pub fn simulate(resolution: usize, seed: u32) {
         ));
         vege_small = veges(&chartise(&year_small), &altitude_small, ocean_level);
     }
-
-    //vege_small.variable = format!("vege-{}", seed);
-    //vege_small.render(clr::KoppenInk);
 
     /*
     // # erode
@@ -174,11 +191,20 @@ pub fn simulate(resolution: usize, seed: u32) {
 
     // # upscale
     // upscale the last YEAR_LEN from year_small and use it to calculate veges on the full resolution map
-    //let continentality = continentality(&altitude, ocean_level);
-    let year = predict(year_small, &altitude);
-    let mut vege = veges(&chartise(&year), &altitude, ocean_level);
-    vege.variable = format!("vege-{}", seed);
-    vege.render(clr::KoppenInk);
+    let continentality = continentality_small.upscale(resolution);
+    let year = predict(
+        year_small,
+        &altitude_small,
+        &continentality_small,
+        &altitude,
+        &continentality,
+    );
+
+    (altitude, chartise(&year))
+
+    //let mut vege = veges(&chartise(&year), &altitude, ocean_level);
+    //vege.variable = format!("vege-{}", seed);
+    //vege.render(clr::KoppenInk);
 
     // # finish
     // score the generated cosmos
