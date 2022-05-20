@@ -4,7 +4,7 @@ use crate::{
         chart::{Chart, Zone},
         geology::{ocean, ocean_tiles},
         simulation::simulate,
-        vegetation::Vege,
+        vegetation::{habitability, Vege},
     },
 };
 //use log::trace;
@@ -40,6 +40,26 @@ impl Cosmos {
                 })
                 .collect::<Vec<Option<Vege>>>(),
         )
+    }
+
+    pub fn score(&self) -> f64 {
+        let count: f64 = self.altitude.resolution.pow(2) as f64;
+        let land_cover = 1.0
+            - ocean_tiles(&self.altitude, ocean(&self.altitude))
+                .grid
+                .into_iter()
+                .filter(|b| *b)
+                .map(|_| 1)
+                .sum::<usize>() as f64
+                * count.recip();
+        let habitability = self
+            .vege()
+            .grid
+            .into_iter()
+            .map(|zone| habitability(zone))
+            .sum::<f64>()
+            * count.recip();
+        ((land_cover - 0.64).powi(2) + 2. * (habitability - 0.48).powi(2)).sqrt()
     }
 }
 

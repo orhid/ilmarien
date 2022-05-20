@@ -1,11 +1,8 @@
-use crate::{
-    carto::{
-        brane::Brane,
-        datum::{DatumRe, DatumZa},
-        flux::Flux,
-        honeycomb::{Hexagon, HoneyCellPlanar},
-    },
-    climate::geology::INIT_OCEAN_LEVEL,
+use crate::carto::{
+    brane::Brane,
+    datum::{DatumRe, DatumZa},
+    flux::Flux,
+    honeycomb::{Hexagon, HoneyCellPlanar},
 };
 use log::trace;
 use rayon::prelude::*;
@@ -81,19 +78,23 @@ pub fn temperature_oceanlv(month: f64, continentality: &Brane<f64>) -> Brane<f64
     )
 }
 
-const RATE_LAPSE: f64 = 0.72;
+//const RATE_LAPSE: f64 = 0.72;
+const RATE_LAPSE: f64 = 1.21;
 
 /// calculate temperature lapse rate
-fn lapse_ix(temperature: f64, altitude: f64) -> f64 {
-    temperature
-        * ((1.0 - altitude + INIT_OCEAN_LEVEL) + (altitude - INIT_OCEAN_LEVEL) * (1.0 - RATE_LAPSE))
+fn lapse_ix(temperature: f64, altitude: f64, ocean: f64) -> f64 {
+    temperature * ((1.0 - altitude + ocean) + (altitude - ocean) * (1.0 - RATE_LAPSE))
 }
 
-pub fn temperature(temperature_oceanlv: &Brane<f64>, altitude: &Brane<f64>) -> Brane<f64> {
+pub fn temperature(
+    temperature_oceanlv: &Brane<f64>,
+    altitude: &Brane<f64>,
+    ocean: f64,
+) -> Brane<f64> {
     Brane::from(
         (0..temperature_oceanlv.resolution.pow(2))
             .into_par_iter()
-            .map(|j| lapse_ix(temperature_oceanlv.grid[j], altitude.grid[j]))
+            .map(|j| lapse_ix(temperature_oceanlv.grid[j], altitude.grid[j], ocean))
             .collect::<Vec<f64>>(),
     )
 }

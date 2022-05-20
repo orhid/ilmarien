@@ -1,5 +1,10 @@
-use crate::carto::{brane::Brane, datum::DatumZa, honeycomb::HoneyCellToroidal};
+use crate::carto::{
+    brane::Brane,
+    datum::{DatumRe, DatumZa},
+    honeycomb::HoneyCellToroidal,
+};
 use nalgebra::{DMatrix, DVector};
+use std::f64::consts::TAU;
 
 fn coordinates(altitude: &Brane<f64>) -> DMatrix<f64> {
     let resolution = altitude.resolution;
@@ -13,19 +18,51 @@ fn coordinates(altitude: &Brane<f64>) -> DMatrix<f64> {
                 * (resolution as f64).recip()
         }),
     );
+    let centres = datums
+        .into_iter()
+        .map(|datum| datum.cast(resolution))
+        .collect::<Vec<DatumRe>>();
+    let xcos = DVector::<f64>::from_iterator(
+        resolution.pow(2),
+        centres.iter().map(|datum| (datum.x * TAU).cos()),
+    );
+    let xsin = DVector::<f64>::from_iterator(
+        resolution.pow(2),
+        centres.iter().map(|datum| (datum.x * TAU).sin()),
+    );
+    let ycos = DVector::<f64>::from_iterator(
+        resolution.pow(2),
+        centres.iter().map(|datum| (datum.y * TAU).cos()),
+    );
+    let ysin = DVector::<f64>::from_iterator(
+        resolution.pow(2),
+        centres.iter().map(|datum| (datum.y * TAU).sin()),
+    );
 
     DMatrix::from_columns(&[
         radius,
+        xcos,
+        xsin,
+        ycos,
+        ysin,
         DVector::<f64>::from_iterator(resolution.pow(2), altitude.grid.clone().into_iter()),
     ])
 }
 
 fn lin_reg(x_train: &DMatrix<f64>, y_train: &DVector<f64>, x_test: &DMatrix<f64>) -> DVector<f64> {
-    let qr = x_train.clone().qr();
+    let columns = x_train.shape().1;
+    let qr = x_train
+        .clone()
+        .insert_column(columns, 1.0)
+        .into_owned()
+        .qr();
     let (q, r) = (qr.q().transpose(), qr.r());
     let coeff = r.try_inverse().unwrap() * &q * y_train;
+    //println!("{}", coeff.clone());
+    let mul = coeff.rows(0, columns);
+    let intercept = coeff[(columns, 0)];
 
-    x_test * &coeff
+    (x_test * &mul).add_scalar(intercept)
 }
 
 pub fn predict_month(
@@ -39,18 +76,20 @@ pub fn predict_month(
 ) -> (Brane<f64>, Brane<f64>, Brane<f64>) {
     // # prepare coordinates
     let mut a_smol = coordinates(altitude_smol);
-    a_smol = a_smol.insert_column(2, 0.0);
+    let mut a = coordinates(altitude);
+    let columns = a.shape().1;
+
+    a_smol = a_smol.insert_column(columns, 0.0);
     a_smol.set_column(
-        2,
+        columns,
         &DVector::<f64>::from_iterator(
             altitude_smol.resolution.pow(2),
             continentality_smol.grid.clone().into_iter(),
         ),
     );
-    let mut a = coordinates(altitude);
-    a = a.insert_column(2, 0.0);
+    a = a.insert_column(columns, 0.0);
     a.set_column(
-        2,
+        columns,
         &DVector::<f64>::from_iterator(
             altitude.resolution.pow(2),
             continentality.grid.clone().into_iter(),
@@ -65,10 +104,10 @@ pub fn predict_month(
     let temp_dv = lin_reg(&a_smol, &temp_smol_dv, &a);
 
     // # predict rain
-    a_smol = a_smol.insert_column(3, 0.0);
-    a = a.insert_column(3, 0.0);
-    a_smol.set_column(3, &temp_smol_dv);
-    a.set_column(3, &temp_dv);
+    a_smol = a_smol.insert_column(columns + 1, 0.0);
+    a = a.insert_column(columns + 1, 0.0);
+    a_smol.set_column(columns + 1, &temp_smol_dv);
+    a.set_column(columns + 1, &temp_dv);
 
     let rain_smol_dv = DVector::<f64>::from_iterator(
         altitude_smol.resolution.pow(2),

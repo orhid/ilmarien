@@ -57,6 +57,27 @@ pub fn hydro_potential(cell: Option<Vege>) -> f64 {
     }
 }
 
+/// how many people can this zone sustain
+pub fn habitability(cell: Option<Vege>) -> f64 {
+    match cell {
+        Some(vege) => match vege {
+            Vege::Frost => 0.02,
+            Vege::Stone => 0.01,
+            Vege::Tundra => 0.12,
+            Vege::Prairie => 0.78,
+            Vege::Savanna => 0.48,
+            Vege::Sand => 0.02,
+            Vege::Shrub => 0.54,
+            Vege::Taiga => 0.42,
+            Vege::Coniferous => 0.84,
+            Vege::Decideous => 1.00,
+            Vege::Monsoon => 0.72,
+            Vege::Broadleaf => 0.54,
+        },
+        None => 0.,
+    }
+}
+
 const ARID_FACTOR: f64 = 0.36;
 
 impl From<&Vege> for Zone {

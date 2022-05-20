@@ -30,7 +30,7 @@ impl Month {
         altitude: &Brane<f64>,
         continentality: &Brane<f64>,
     ) -> Self {
-        let (t, _, p) = predict_month(
+        let (t, r, p) = predict_month(
             &self.temp,
             &self.rain,
             &self.pevt,
@@ -39,10 +39,16 @@ impl Month {
             altitude,
             continentality,
         );
-        Self::new(
-            (self.temp.upscale(altitude.resolution) + t) * 2f64.recip(),
+        let regression = Self::new(t, r, p);
+        let naive = Self::new(
+            self.temp.upscale(altitude.resolution),
             self.rain.upscale(altitude.resolution),
-            (self.pevt.upscale(altitude.resolution) + p) * 2f64.recip(),
+            self.pevt.upscale(altitude.resolution),
+        );
+        Self::new(
+            (regression.temp * 2f64 + naive.temp) * 3f64.recip(),
+            naive.rain, // * 1f64.recip(),
+            (regression.pevt + naive.pevt) * 2f64.recip(),
         )
     }
 }
@@ -138,7 +144,7 @@ fn simulate_month(
 ) -> Month {
     let tmp_olv = temperature_oceanlv(sol, continentality);
     let alt_wo = altitude_with_ocean(altitude, ocean);
-    let temp = temperature(&tmp_olv, &alt_wo);
+    let temp = temperature(&tmp_olv, &alt_wo, ocean);
     let pevt = potential_evaporation(&temp);
     Month::new(
         temp,
@@ -153,10 +159,11 @@ pub fn simulate(resolution: usize, seed: u32) -> (Brane<f64>, Brane<Chart>) {
     let ocean_level = ocean(&altitude);
     let altitude_small = altitude.upscale(RES_SMALL);
     let continentality_small = continentality(&altitude_small, ocean_level);
-    let mut vege_small = bedrock_vege(&altitude_small);
+    let mut vege_small = bedrock_vege(&altitude_small, ocean_level);
 
     // # dry run
     let mut year_small = Vec::<Month>::new();
+    /*
     for sol in 0..(YEAR_LEN) {
         year_small.push(simulate_month(
             sol as f64 / YEAR_LEN as f64,
@@ -167,6 +174,7 @@ pub fn simulate(resolution: usize, seed: u32) -> (Brane<f64>, Brane<Chart>) {
         ));
         vege_small = veges(&chartise(&year_small), &altitude_small, ocean_level);
     }
+    */
 
     /*
     // # erode
@@ -194,9 +202,9 @@ pub fn simulate(resolution: usize, seed: u32) -> (Brane<f64>, Brane<Chart>) {
     let continentality = continentality_small.upscale(resolution);
     let year = predict(
         year_small,
-        &altitude_small,
+        &altitude_with_ocean(&altitude_small, ocean_level),
         &continentality_small,
-        &altitude,
+        &altitude_with_ocean(&altitude, ocean_level),
         &continentality,
     );
 

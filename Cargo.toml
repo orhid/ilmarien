@@ -8,7 +8,7 @@ edition = "2018"
 # base
 log = "0.4"
 pretty_env_logger = "0.4"
-rayon = { version = "1.5", default-features = false }
+rayon = { version = "1.5.3", default-features = false }
 num-traits = "0.2"
 ord_subset = "3.1"
 

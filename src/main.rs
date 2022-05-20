@@ -1,32 +1,40 @@
 #[allow(unused_imports)]
 use ilmarien::{
     carto::{colour as clr, render::Renderable},
-    climate::cosmos::Cosmos,
+    climate::{cosmos::Cosmos, geology::ocean},
 };
 use log::info;
 use std::thread;
 
 #[allow(dead_code)]
-fn test() {}
+fn run_once(res: usize, seed: u32) {
+    let cosmos = Cosmos::sim_new(res, seed);
+    //if cosmos.score() < 0.15 {
+    //info!("achieved score at {}, rendering...", seed);
+    let mut altitude = cosmos.altitude.clone();
+    altitude.variable = format!("{}-alt", seed);
+    altitude.render(clr::TopographyInk::new(ocean(&cosmos.altitude)));
+    let mut vege = cosmos.vege();
+    vege.variable = format!("{}-vege", seed);
+    vege.render(clr::KoppenInk);
+    //}
+    info!("finished simulation at {}", seed);
+}
 
 #[allow(dead_code)]
-fn test_sim() {
-    let res: usize = 432;
+fn run_many() {
+    let res: usize = 216;
 
     // make a vector to hold the children which are spawned
     let mut children = vec![];
 
-    let (j, k) = (2u32.pow(8), 3u32.pow(6));
-    let count = 1;
+    let (j, k) = (2, 3);
+    let count = 36;
     for s in 0..count {
         let seed = j * s + k;
         // spin up another thread
         children.push(thread::spawn(move || {
-            let cosmos = Cosmos::sim_new(res, seed);
-            let mut vege = cosmos.vege();
-            vege.variable = format!("vege-{}", seed);
-            vege.render(clr::KoppenInk);
-            info!("finished simulation at {}", seed);
+            run_once(res, seed);
         }));
     }
 
@@ -39,6 +47,6 @@ fn test_sim() {
 fn main() {
     pretty_env_logger::init_timed();
     info!("initialising ilmarien");
-    test_sim();
+    run_once(432, 4);
     info!("computation completed")
 }

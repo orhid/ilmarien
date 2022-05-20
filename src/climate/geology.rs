@@ -24,10 +24,9 @@ const SQRT3B2: f64 = 0.8660254;
 /* # bedrock generation */
 
 const GEO_DETAIL: i32 = 12; // number of octaves in noise generation
-const GEO_SCALE: f64 = 0.375; // scale for generated noise
+const GEO_SCALE: f64 = 0.5; //0.375; // scale for generated noise
 const AMP_FACTOR: f64 = 1.5652; // base for amplitude geometric series
 const BLW_FACTOR: f64 = 1.6725; // should blow results to [-1,1] range
-pub const INIT_OCEAN_LEVEL: f64 = 0.25; // initial ocean level
 
 fn elevation_curve() -> Spline<f64, f64> {
     // curve moves the mode of the distribution
@@ -37,7 +36,7 @@ fn elevation_curve() -> Spline<f64, f64> {
         Key::new(0., 0., Interpolation::Linear),
         Key::new(0.01, shelf - 4.0 * step, Interpolation::Linear),
         Key::new(0.06, shelf, Interpolation::Linear),
-        Key::new(0.27, shelf + 8.0 * step, Interpolation::Linear),
+        Key::new(0.24, shelf + 8.0 * step, Interpolation::Linear),
         Key::new(1., 1., Interpolation::Linear),
     ])
 }
@@ -103,12 +102,12 @@ pub fn bedrock_level(resolution: usize, seed: u32) -> Brane<f64> {
     )
 }
 
-pub fn bedrock_vege(altitude: &Brane<f64>) -> Brane<Option<Vege>> {
+pub fn bedrock_vege(altitude: &Brane<f64>, ocean: f64) -> Brane<Option<Vege>> {
     Brane::from(
         (0..altitude.resolution.pow(2))
             .into_par_iter()
             .map(|j| {
-                if altitude.grid[j] < INIT_OCEAN_LEVEL {
+                if altitude.grid[j] < ocean {
                     None
                 } else {
                     Some(Vege::Stone)
