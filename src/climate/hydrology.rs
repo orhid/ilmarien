@@ -19,13 +19,15 @@ use rayon::prelude::*;
 
 /* ## evaporation */
 
+const BASE_PEVT: f64 = 0.06;
+
 /// potential amount of water that could be evaporated
 pub fn potential_evaporation(temperature: &Brane<f64>) -> Brane<f64> {
     trace!("calculating potential evaporation model");
     Brane::from(
         (0..temperature.resolution.pow(2))
             .into_par_iter()
-            .map(|j| temperature.grid[j].powi(2))
+            .map(|j| temperature.grid[j].powi(2) + BASE_PEVT)
             .collect::<Vec<f64>>(),
     )
 }
@@ -96,9 +98,11 @@ fn rainfall_nd(
     moisture - drop
 }
 
-/// calculate the amount of rainfall reaching the surface
-pub fn rainfall(elevation: &Brane<f64>, evaporation: &Brane<f64>, wind: &Flux<f64>) -> Brane<f64> {
-    trace!("calculating rainfall");
+fn rainfall_naive(
+    elevation: &Brane<f64>,
+    evaporation: &Brane<f64>,
+    wind: &Flux<f64>,
+) -> Brane<f64> {
     // this is slightly slower than diffusion, although it does look better
     // unfortunately this is also hugely resolution dependent
     //      higher resolutions are much much wetter
@@ -122,6 +126,27 @@ pub fn rainfall(elevation: &Brane<f64>, evaporation: &Brane<f64>, wind: &Flux<f6
         * rainfall.grid.iter().sum::<f64>().recip();
 
     rainfall * correction
+}
+
+const RAIN_BLOW: f64 = 2.16;
+
+/// calculate the amount of rainfall reaching the surface
+pub fn rainfall(
+    elevation: &Brane<f64>,
+    evaporation: &Brane<f64>,
+    wind: &Flux<f64>,
+    continentality: &Brane<f64>,
+) -> Brane<f64> {
+    trace!("calculating rainfall");
+    let rainfall_naive = rainfall_naive(elevation, evaporation, wind);
+    Brane::from(
+        (0..rainfall_naive.resolution.pow(2))
+            .into_par_iter()
+            .map(|j| {
+                RAIN_BLOW * rainfall_naive.grid[j] * 8f64.recip().max(1.0 - continentality.grid[j])
+            })
+            .collect::<Vec<f64>>(),
+    )
 }
 
 /* # watershed */
@@ -184,7 +209,7 @@ mod test {
 
     #[test]
     fn rainfall_values() {
-        let brane = rainfall(
+        let brane = rainfall_naive(
             &Brane::from(
                 (0..144)
                     .map(|j| (j % 12 + j / 12) as f64 / 24.0)

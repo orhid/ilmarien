@@ -9,15 +9,15 @@ use std::thread;
 #[allow(dead_code)]
 fn run_once(res: usize, seed: u32) {
     let cosmos = Cosmos::sim_new(res, seed);
-    //if cosmos.score() < 0.15 {
-    //info!("achieved score at {}, rendering...", seed);
-    let mut altitude = cosmos.altitude.clone();
-    altitude.variable = format!("{}-alt", seed);
-    altitude.render(clr::TopographyInk::new(ocean(&cosmos.altitude)));
-    let mut vege = cosmos.vege();
-    vege.variable = format!("{}-vege", seed);
-    vege.render(clr::KoppenInk);
-    //}
+    if cosmos.score() < 0.1 {
+        info!("achieved score at {}, rendering...", seed);
+        let mut altitude = cosmos.altitude.clone();
+        altitude.variable = format!("{}-alt", seed);
+        altitude.render(clr::TopographyInk::new(ocean(&cosmos.altitude)));
+        let mut vege = cosmos.vege();
+        vege.variable = format!("{}-vege", seed);
+        vege.render(clr::KoppenInk);
+    }
     info!("finished simulation at {}", seed);
 }
 
@@ -28,8 +28,8 @@ fn run_many() {
     // make a vector to hold the children which are spawned
     let mut children = vec![];
 
-    let (j, k) = (2, 3);
-    let count = 36;
+    let (j, k) = (3, 7);
+    let count = 18;
     for s in 0..count {
         let seed = j * s + k;
         // spin up another thread
@@ -47,6 +47,6 @@ fn run_many() {
 fn main() {
     pretty_env_logger::init_timed();
     info!("initialising ilmarien");
-    run_once(432, 4);
+    run_many();
     info!("computation completed")
 }

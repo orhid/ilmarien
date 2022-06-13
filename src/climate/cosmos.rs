@@ -59,7 +59,9 @@ impl Cosmos {
             .map(|zone| habitability(zone))
             .sum::<f64>()
             * count.recip();
-        ((land_cover - 0.64).powi(2) + 2. * (habitability - 0.48).powi(2)).sqrt()
+        let r = ((land_cover - 0.64).powi(2) + 2. * (habitability - 0.24).powi(2)).sqrt();
+        println!("{:.4} {:.4} {:.4}", land_cover, habitability, r);
+        r
     }
 }
 

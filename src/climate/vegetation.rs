@@ -78,12 +78,11 @@ pub fn habitability(cell: Option<Vege>) -> f64 {
     }
 }
 
-const ARID_FACTOR: f64 = 0.36;
+const ARID_FACTOR: f64 = 0.72;
 
 impl From<&Vege> for Zone {
     fn from(vege: &Vege) -> Self {
         match vege {
-            // high aridity should correspond to arid areas, not wet DUMBASS
             Vege::Stone => Self::new(1.08 * ARID_FACTOR, 0.0, -3.0, 12.0),
             Vege::Sand => Self::new(0.96 * ARID_FACTOR, 0.0, 27.0, 36.0),
 
@@ -108,7 +107,7 @@ impl From<&Zone> for Vege {
             Self::Stone
         } else {
             match zone.aridity {
-                a if a < 0.64 * ARID_FACTOR => {
+                a if a > 1.44 * ARID_FACTOR => {
                     if zone.tmax < 0.0 {
                         Vege::Frost
                     } else if zone.tmin > 18.0 {
@@ -119,7 +118,7 @@ impl From<&Zone> for Vege {
                         Vege::Monsoon //decidous but wetter
                     }
                 }
-                a if a < 0.96 * ARID_FACTOR => {
+                a if a > 0.72 * ARID_FACTOR => {
                     if zone.tmax < 0.0 {
                         Vege::Frost
                     } else if zone.tmin > 24.0 {
@@ -130,7 +129,7 @@ impl From<&Zone> for Vege {
                         Vege::Decideous
                     }
                 }
-                a if a < 1.44 * ARID_FACTOR => {
+                a if a > 0.36 * ARID_FACTOR => {
                     if zone.tmax < 0.0 {
                         Vege::Frost
                     } else if zone.tmin > 18.0 {
@@ -141,6 +140,15 @@ impl From<&Zone> for Vege {
                         Vege::Tundra
                     } else {
                         Vege::Prairie
+                    }
+                }
+                a if a > 0.06 * ARID_FACTOR => {
+                    if zone.tmax < 0.0 {
+                        Vege::Frost
+                    } else if zone.tmin > 3.0 {
+                        Vege::Sand
+                    } else {
+                        Vege::Stone
                     }
                 }
                 _ => {

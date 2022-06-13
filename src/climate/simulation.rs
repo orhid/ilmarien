@@ -46,14 +46,14 @@ impl Month {
             self.pevt.upscale(altitude.resolution),
         );
         Self::new(
-            (regression.temp * 2f64 + naive.temp) * 3f64.recip(),
-            naive.rain, // * 1f64.recip(),
-            (regression.pevt + naive.pevt) * 2f64.recip(),
+            regression.temp,
+            naive.rain,
+            (regression.pevt * 3f64 + naive.pevt) * 4f64.recip(),
         )
     }
 }
 
-const YEAR_LEN: usize = 6;
+const YEAR_LEN: usize = 8;
 const RES_SMALL: usize = 144;
 
 /*
@@ -148,7 +148,12 @@ fn simulate_month(
     let pevt = potential_evaporation(&temp);
     Month::new(
         temp,
-        rainfall(&alt_wo, &evaporation(&pevt, vege), &wind(&tmp_olv)),
+        rainfall(
+            &alt_wo,
+            &evaporation(&pevt, vege),
+            &wind(&tmp_olv),
+            continentality,
+        ),
         pevt,
     )
 }
@@ -163,7 +168,6 @@ pub fn simulate(resolution: usize, seed: u32) -> (Brane<f64>, Brane<Chart>) {
 
     // # dry run
     let mut year_small = Vec::<Month>::new();
-    /*
     for sol in 0..(YEAR_LEN) {
         year_small.push(simulate_month(
             sol as f64 / YEAR_LEN as f64,
@@ -174,7 +178,6 @@ pub fn simulate(resolution: usize, seed: u32) -> (Brane<f64>, Brane<Chart>) {
         ));
         vege_small = veges(&chartise(&year_small), &altitude_small, ocean_level);
     }
-    */
 
     /*
     // # erode
@@ -184,6 +187,7 @@ pub fn simulate(resolution: usize, seed: u32) -> (Brane<f64>, Brane<Chart>) {
     let continentality_small = continentality(&altitude_small, ocean_level);
     */
 
+    /*
     // # eroded run
     // let mut year_small = Vec::<Month>::new(); // use results from dry run
     for sol in 0..(2 * YEAR_LEN + 1) {
@@ -196,6 +200,7 @@ pub fn simulate(resolution: usize, seed: u32) -> (Brane<f64>, Brane<Chart>) {
         ));
         vege_small = veges(&chartise(&year_small), &altitude_small, ocean_level);
     }
+    */
 
     // # upscale
     // upscale the last YEAR_LEN from year_small and use it to calculate veges on the full resolution map

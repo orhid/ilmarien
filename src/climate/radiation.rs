@@ -78,8 +78,7 @@ pub fn temperature_oceanlv(month: f64, continentality: &Brane<f64>) -> Brane<f64
     )
 }
 
-//const RATE_LAPSE: f64 = 0.72;
-const RATE_LAPSE: f64 = 1.21;
+const RATE_LAPSE: f64 = 2.16;
 
 /// calculate temperature lapse rate
 fn lapse_ix(temperature: f64, altitude: f64, ocean: f64) -> f64 {

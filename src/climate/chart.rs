@@ -70,8 +70,13 @@ impl Chart {
         self.peva.push(peva);
     }
 
-    pub fn aridity(&self) -> f64 {
+    /// fucking backwards defined aridity index
+    fn aridity_index(&self) -> f64 {
         self.rain.iter().sum::<f64>() * self.peva.iter().sum::<f64>().recip()
+    }
+
+    pub fn aridity(&self) -> f64 {
+        self.aridity_index()
     }
 
     pub fn swing(&self) -> f64 {

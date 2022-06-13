@@ -31,13 +31,18 @@ const BLW_FACTOR: f64 = 1.6725; // should blow results to [-1,1] range
 fn elevation_curve() -> Spline<f64, f64> {
     // curve moves the mode of the distribution
     let step = 256f64.recip();
-    let shelf: f64 = 0.24;
+    let shelf: f64 = 0.27;
     Spline::from_vec(vec![
         Key::new(0., 0., Interpolation::Linear),
         Key::new(0.01, shelf - 4.0 * step, Interpolation::Linear),
         Key::new(0.06, shelf, Interpolation::Linear),
-        Key::new(0.24, shelf + 8.0 * step, Interpolation::Linear),
+        Key::new(0.18, shelf + 8.0 * step, Interpolation::Linear),
         Key::new(1., 1., Interpolation::Linear),
+        /*
+          Key::new(0.01, shelf - 4.0 * step, Interpolation::Linear),
+          Key::new(0.06, shelf, Interpolation::Linear),
+          Key::new(0.24, shelf + 8.0 * step, Interpolation::Linear),
+        */
     ])
 }
 
@@ -238,7 +243,7 @@ pub fn erode(altitude: &mut Brane<f64>, rain: &Brane<f64>) {
 }
 
 pub fn ocean(altitude: &Brane<f64>) -> f64 {
-    altitude.mde() - 256_f64.recip()
+    altitude.mde() // - 256_f64.recip()
 }
 
 #[cfg(test)]
