@@ -132,6 +132,8 @@ impl Ink<f64> for BiHueInk {
 
 /* ## geographic inks */
 
+use crate::units::Elevation;
+
 pub struct TemperatureInk;
 
 impl Ink<f64> for TemperatureInk {
@@ -153,46 +155,34 @@ impl Ink<f64> for CelciusInk {
 }
 
 pub struct TopographyInk {
-    ocean_level: f64,
+    ocean_level: Elevation,
 }
 
 impl TopographyInk {
-    pub fn new(ocean_level: f64) -> Self {
+    pub fn new(ocean_level: Elevation) -> Self {
         Self { ocean_level }
     }
 }
 
-impl Ink<f64> for TopographyInk {
-    fn paint(&self, sample: f64) -> String {
-        let ocean = self.ocean_level - sample;
-        if ocean > 0.0 {
-            if ocean < 2.0 / 256.0 {
-                RGB::new(162, 184, 170).paint()
-            } else if ocean < 8.0 / 256.0 {
-                RGB::new(134, 163, 151).paint()
-            } else if ocean < 16.0 / 256.0 {
-                RGB::new(94, 138, 130).paint()
-            } else {
-                RGB::new(53, 89, 92).paint()
-            }
-        } else if sample < self.ocean_level {
-            RGB::new(223, 235, 217).paint()
-        } else if sample < self.ocean_level + 2.0 / 256.0 {
-            RGB::new(243, 245, 237).paint()
-        } else if sample < self.ocean_level + 4.0 / 256.0 {
-            RGB::new(233, 235, 216).paint()
-        } else if sample < self.ocean_level + 8.0 / 256.0 {
-            RGB::new(214, 213, 188).paint()
-        } else if sample < self.ocean_level + 16.0 / 256.0 {
-            RGB::new(199, 191, 163).paint()
-        } else if sample < self.ocean_level + 32.0 / 256.0 {
-            RGB::new(184, 165, 134).paint()
-        } else if sample < self.ocean_level + 64.0 / 256.0 {
-            RGB::new(163, 131, 104).paint()
-        } else if sample < self.ocean_level + 128.0 / 256.0 {
-            RGB::new(138, 95, 80).paint()
-        } else {
-            RGB::new(115, 71, 67).paint()
+impl Ink<Elevation> for TopographyInk {
+    fn paint(&self, sample: Elevation) -> String {
+        let step: i32 = 54;
+        let elevation = sample.meters() - self.ocean_level.meters();
+        match elevation {
+            x if (..-16 * step).contains(&x) => RGB::new(53, 89, 92).paint(),
+            x if (-16 * step..-8 * step).contains(&x) => RGB::new(94, 138, 130).paint(),
+            x if (-8 * step..-2 * step).contains(&x) => RGB::new(134, 163, 151).paint(),
+            x if (-2 * step..0).contains(&x) => RGB::new(162, 184, 170).paint(),
+            x if (0..step).contains(&x) => RGB::new(223, 235, 217).paint(),
+            x if (step..2 * step).contains(&x) => RGB::new(243, 245, 237).paint(),
+            x if (2 * step..4 * step).contains(&x) => RGB::new(233, 235, 216).paint(),
+            x if (4 * step..8 * step).contains(&x) => RGB::new(214, 213, 188).paint(),
+            x if (8 * step..16 * step).contains(&x) => RGB::new(199, 191, 163).paint(),
+            x if (16 * step..32 * step).contains(&x) => RGB::new(184, 165, 134).paint(),
+            x if (32 * step..64 * step).contains(&x) => RGB::new(163, 131, 104).paint(),
+            x if (64 * step..128 * step).contains(&x) => RGB::new(138, 95, 80).paint(),
+            x if (128 * step..).contains(&x) => RGB::new(115, 71, 67).paint(),
+            _ => unreachable!(),
         }
     }
 }

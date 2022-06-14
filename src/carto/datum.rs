@@ -141,8 +141,7 @@ impl DatumRe {
         DatumZa::from(self * resolution as f64)
     }
 
-    /// transform into a Zahl Datum faster
-    /// by simply flooring
+    /// transform into a Zahl Datum faster by simply flooring
     pub fn floor(self, resolution: usize) -> DatumZa {
         DatumZa {
             x: (self.x * resolution as f64) as i32,

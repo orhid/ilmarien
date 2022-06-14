@@ -62,7 +62,7 @@ fn lin_reg(x_train: &DMatrix<f64>, y_train: &DVector<f64>, x_test: &DMatrix<f64>
     let mul = coeff.rows(0, columns);
     let intercept = coeff[(columns, 0)];
 
-    (x_test * &mul).add_scalar(intercept)
+    (x_test * mul).add_scalar(intercept)
 }
 
 pub fn predict_month(

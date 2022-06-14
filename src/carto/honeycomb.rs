@@ -17,43 +17,20 @@ pub enum Direction {
     Yn,
 }
 
-impl From<usize> for Direction {
-    fn from(direction: usize) -> Direction {
-        match direction.rem_euclid(6) {
-            0 => Direction::Xp,
-            1 => Direction::Zn,
-            2 => Direction::Yp,
-            3 => Direction::Xn,
-            4 => Direction::Zp,
-            5 => Direction::Yn,
-            _ => panic!("impossible result"),
-        }
-    }
-}
-
-impl From<Direction> for usize {
-    fn from(direction: Direction) -> usize {
-        match direction {
-            Direction::Xp => 0,
-            Direction::Zn => 1,
-            Direction::Yp => 2,
-            Direction::Xn => 3,
-            Direction::Zp => 4,
-            Direction::Yn => 5,
-        }
-    }
-}
-
 impl Direction {
-    pub fn array() -> [Direction; 6] {
-        [
-            Direction::Xp,
-            Direction::Zn,
-            Direction::Yp,
-            Direction::Xn,
-            Direction::Zp,
-            Direction::Yn,
-        ]
+    pub fn array() -> [Self; 6] {
+        [Self::Xp, Self::Zn, Self::Yp, Self::Xn, Self::Zp, Self::Yn]
+    }
+
+    pub fn index(&self) -> usize {
+        match self {
+            Self::Xp => 0,
+            Self::Zn => 1,
+            Self::Yp => 2,
+            Self::Xn => 3,
+            Self::Zp => 4,
+            Self::Yn => 5,
+        }
     }
 }
 
@@ -204,6 +181,7 @@ impl HoneyCellToroidal for DatumZa {
     }
 }
 
+/*
 pub fn ball_volume(radius: i32) -> i32 {
     3 * radius * (radius + 1) + 1
 }
@@ -211,6 +189,7 @@ pub fn ball_volume(radius: i32) -> i32 {
 pub fn ball_cone_volume(radius: i32) -> i32 {
     (radius + 1).pow(3)
 }
+*/
 
 /* ## hexagons */
 
@@ -219,7 +198,7 @@ pub trait Hexagon {
     fn centre(&self) -> DatumRe;
 
     fn corner(&self, centre: DatumRe, direction: Direction) -> DatumRe {
-        let angle = usize::from(direction) as f64 * TAU * 6.0f64.recip();
+        let angle = direction.index() as f64 * TAU * 6.0f64.recip();
         centre
             + DatumRe {
                 x: angle.cos(),
@@ -298,10 +277,10 @@ mod test {
     #[test]
     fn neighbour_planar() {
         let org = DatumZa { x: 0, y: 0 };
-        assert_eq!(org.neighbour_planar(0.into()), DatumZa { x: 1, y: 0 });
-        assert_eq!(org.neighbour_planar(2.into()), DatumZa { x: 0, y: -1 });
-        assert_eq!(org.neighbour_planar(3.into()), DatumZa { x: -1, y: 0 });
-        assert_eq!(org.neighbour_planar(5.into()), DatumZa { x: 0, y: 1 });
+        assert_eq!(org.neighbour_planar(Direction::Xp), DatumZa { x: 1, y: 0 });
+        assert_eq!(org.neighbour_planar(Direction::Yp), DatumZa { x: 0, y: -1 });
+        assert_eq!(org.neighbour_planar(Direction::Xn), DatumZa { x: -1, y: 0 });
+        assert_eq!(org.neighbour_planar(Direction::Yn), DatumZa { x: 0, y: 1 });
     }
 
     #[test]
@@ -310,10 +289,7 @@ mod test {
         let ambit = org.ambit_planar();
         assert_eq!(ambit.len(), 6);
         for direction in Direction::array() {
-            assert_eq!(
-                ambit[usize::from(direction)],
-                org.neighbour_planar(direction)
-            );
+            assert_eq!(ambit[direction.index()], org.neighbour_planar(direction));
         }
     }
 
@@ -330,6 +306,7 @@ mod test {
         }
     }
 
+    /*
     #[test]
     fn volume() {
         assert_eq!(ball_volume(0), 1);
@@ -345,16 +322,29 @@ mod test {
         assert_eq!(ball_cone_volume(2), 27);
         assert_eq!(ball_cone_volume(3), 64);
     }
+    */
 
     /* ## toroidal */
 
     #[test]
     fn neighbour_toroidal() {
         let org = DatumZa { x: 0, y: 0 };
-        assert_eq!(org.neighbour_toroidal(0.into(), 4), DatumZa { x: 1, y: 0 });
-        assert_eq!(org.neighbour_toroidal(2.into(), 4), DatumZa { x: 0, y: 3 });
-        assert_eq!(org.neighbour_toroidal(3.into(), 4), DatumZa { x: 3, y: 0 });
-        assert_eq!(org.neighbour_toroidal(5.into(), 4), DatumZa { x: 0, y: 1 });
+        assert_eq!(
+            org.neighbour_toroidal(Direction::Xp, 4),
+            DatumZa { x: 1, y: 0 }
+        );
+        assert_eq!(
+            org.neighbour_toroidal(Direction::Yp, 4),
+            DatumZa { x: 0, y: 3 }
+        );
+        assert_eq!(
+            org.neighbour_toroidal(Direction::Xn, 4),
+            DatumZa { x: 3, y: 0 }
+        );
+        assert_eq!(
+            org.neighbour_toroidal(Direction::Yn, 4),
+            DatumZa { x: 0, y: 1 }
+        );
     }
 
     #[test]
@@ -363,10 +353,7 @@ mod test {
         let amb = org.ambit_toroidal(4);
         assert_eq!(amb.len(), 6);
         for direction in Direction::array() {
-            assert_eq!(
-                amb[usize::from(direction)],
-                org.neighbour_toroidal(direction, 4)
-            );
+            assert_eq!(amb[direction.index()], org.neighbour_toroidal(direction, 4));
         }
     }
 

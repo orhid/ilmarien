@@ -1,11 +1,37 @@
 #[allow(unused_imports)]
+/*
 use ilmarien::{
     carto::{colour as clr, render::Renderable},
-    climate::{cosmos::Cosmos, geology::ocean},
+    climate::geology::ocean_level,
+    units::Unit,
 };
+*/
 use log::info;
-use std::thread;
 
+// use std::thread;
+
+/*
+#[allow(dead_code)]
+fn gen_terrain(res: usize, seed: u32) {
+    use ilmarien::carto::brane::Brane;
+    use ilmarien::climate::geology::bedrock_elevation;
+
+    let mut altitude = bedrock_elevation(res, seed);
+    altitude.variable = format!("{}-alt", seed);
+    Brane::from(
+        altitude
+            .grid
+            .iter()
+            .map(|j| j.release())
+            .collect::<Vec<f64>>(),
+    )
+    .stats();
+    println!("ocean lv: {}", ocean_level(&altitude).release());
+    altitude.render(clr::TopographyInk::new(ocean_level(&altitude)));
+}
+*/
+
+/*
 #[allow(dead_code)]
 fn run_once(res: usize, seed: u32) {
     let cosmos = Cosmos::sim_new(res, seed);
@@ -43,10 +69,11 @@ fn run_many() {
         let _ = child.join();
     }
 }
+*/
 
 fn main() {
     pretty_env_logger::init_timed();
     info!("initialising ilmarien");
-    run_many();
+    // gen_terrain(324, 0);
     info!("computation completed")
 }
