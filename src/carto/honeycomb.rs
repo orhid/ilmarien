@@ -232,7 +232,7 @@ impl Hexagon for DatumRe {
 
 /* # global */
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Tile {
     R,
     G,

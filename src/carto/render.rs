@@ -64,12 +64,12 @@ impl ToSVG for Polygon<f64> {
 /* # rendering branes */
 
 pub trait Renderable<T> {
-    fn render<S>(&self, ink: S)
+    fn render<S>(&self, variable: String, ink: S)
     where
         S: Ink<T>;
 
     /*
-    fn render_triple<T>(&self, ink: T)
+    fn render_triple<T>(&self, variable: String, ink: T)
     where
         T: Ink;
     */
@@ -86,15 +86,15 @@ fn cascade(mut terrace: VecDeque<MultiPolygon<f64>>) -> MultiPolygon<f64> {
     terrace.pop_front().unwrap()
 }
 
-impl<T: Clone> Renderable<T> for Brane<T> {
-    fn render<S>(&self, ink: S)
+impl<T: Clone + Copy> Renderable<T> for Brane<T> {
+    fn render<S>(&self, variable: String, ink: S)
     where
         S: Ink<T>,
     {
-        trace!("rendering brane {}", self.variable);
-        let one: i32 = self.resolution as i32;
+        trace!("rendering brane {}", variable);
+        let one: i32 = self.resolution.into();
         let mut terraces = HashMap::new();
-        for datum in (0..self.resolution.pow(2)).map(|j| DatumZa::enravel(j, self.resolution)) {
+        for datum in (0..self.resolution.square()).map(|j| DatumZa::enravel(j, self.resolution)) {
             let tiling: DatumZa = match datum.tile(one) {
                 Tile::Y => DatumZa::new(0, 0),
                 Tile::R => DatumZa::new(0, -one),
@@ -102,7 +102,7 @@ impl<T: Clone> Renderable<T> for Brane<T> {
                 Tile::G => DatumZa::new(-one, -one),
             };
             terraces
-                .entry(ink.paint(self.read(&datum)))
+                .entry(ink.paint(self.grid[datum.unravel(self.resolution)]))
                 .or_insert_with(VecDeque::<MultiPolygon<f64>>::new)
                 .push_back(MultiPolygon::from(vec![Polygon::new(
                     LineString::from(
@@ -131,7 +131,7 @@ impl<T: Clone> Renderable<T> for Brane<T> {
                 );
             }
         }
-        let path_name = format!("bounce/{}-{}.svg", self.variable, self.resolution);
+        let path_name = format!("bounce/{}-{}.svg", variable, self.resolution.release());
         svg::save(&path_name, &image).unwrap();
     }
 

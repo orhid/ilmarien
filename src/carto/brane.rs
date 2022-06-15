@@ -1,89 +1,282 @@
 use crate::{
-    carto::{
-        datum::{DatumRe, DatumZa},
-        honeycomb::HoneyCellToroidal,
-    },
+    carto::datum::{DatumRe, DatumZa},
     units::Unit,
 };
-use log::{error, trace};
-use num_traits::{identities::Zero, MulAdd};
+use log::trace;
 use rayon::prelude::*;
 use splines::{Interpolation, Key, Spline};
-use std::{
-    collections::HashMap,
-    fs,
-    iter::FromIterator,
-    ops::{Add, Div, Mul, Sub},
-    path::Path,
-};
+use std::{fs, path::Path};
 use tiff::{decoder::*, encoder::*};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Resolution(usize);
+
+impl Resolution {
+    pub const fn confine(value: usize) -> Self {
+        Self(value)
+    }
+
+    pub fn release(self) -> usize {
+        self.0
+    }
+
+    pub fn square(self) -> usize {
+        self.0.pow(2)
+    }
+}
+
+macro_rules! impl_from_resolution {
+    ($num: ty) => {
+        impl From<Resolution> for $num {
+            fn from(res: Resolution) -> $num {
+                res.0 as $num
+            }
+        }
+    };
+}
+
+impl_from_resolution!(usize);
+impl_from_resolution!(u32);
+impl_from_resolution!(i32);
+impl_from_resolution!(f64);
 
 /* # branes */
 
 #[derive(Clone)]
 pub struct Brane<T> {
     pub grid: Vec<T>,
-    pub resolution: usize,
-    pub variable: String,
+    pub resolution: Resolution,
 }
 
-impl<T> Brane<T> {
-    /// change value at given datum
-    pub fn insert(&mut self, datum: &DatumZa, value: T) {
-        self.grid[datum.unravel(self.resolution)] = value;
+impl<T: Send> Brane<T> {
+    pub fn new(grid: Vec<T>, resolution: Resolution) -> Self {
+        Self { grid, resolution }
     }
 
-    /// find a grid datum closest to given coordinate
-    pub fn find(&self, datum: &DatumRe) -> DatumZa {
-        datum.floor(self.resolution)
+    /* ## operations */
+
+    pub fn create_by_index<F>(resolution: Resolution, f: F) -> Self
+    where
+        F: Fn(usize) -> T + Sync + Send,
+    {
+        Self::new(
+            (0..resolution.square())
+                .into_par_iter()
+                .map(f)
+                .collect::<Vec<T>>(),
+            resolution,
+        )
     }
 
-    /// find a grid datum closest to given coordinate
-    pub fn find_accurate(&self, datum: &DatumRe) -> DatumZa {
-        datum.find(self.resolution)
+    pub fn operate_by_index<F, S>(&self, f: F) -> Brane<S>
+    where
+        S: Send,
+        F: Fn(usize) -> S + Sync + Send,
+    {
+        Brane::new(
+            (0..self.resolution.square())
+                .into_par_iter()
+                .map(f)
+                .collect::<Vec<S>>(),
+            self.resolution,
+        )
     }
 
-    /// return a datum in the unit square, regardless of resolution
-    pub fn cast(&self, datum: &DatumZa) -> DatumRe {
-        datum.cast(self.resolution)
+    pub fn operate_by_value<F, S>(self, f: F) -> Brane<S>
+    where
+        S: Send,
+        F: Fn(T) -> S + Sync + Send,
+    {
+        Brane::new(
+            self.grid.into_par_iter().map(f).collect::<Vec<S>>(),
+            self.resolution,
+        )
     }
 
-    /// returns neighbouring datums
-    pub fn ambit(&self, datum: &DatumRe) -> [DatumRe; 6] {
-        datum
-            .floor(self.resolution)
-            .ambit_toroidal(self.resolution as i32)
-            .map(|gon| gon.cast(self.resolution))
+    pub fn operate_by_value_ref<F, S>(&self, f: F) -> Brane<S>
+    where
+        S: Send,
+        F: Fn(&T) -> S,
+    {
+        Brane::new(self.grid.iter().map(f).collect::<Vec<S>>(), self.resolution)
+    }
+}
+
+impl From<Brane<f64>> for Brane<u16> {
+    fn from(brane: Brane<f64>) -> Self {
+        brane.operate_by_value(|value| (value * 2.0_f64.powi(16) - 1.0) as u16)
+    }
+}
+
+impl From<Brane<u16>> for Brane<f64> {
+    fn from(brane: Brane<u16>) -> Self {
+        brane.operate_by_value(|value| value as f64 / (2.0_f64.powi(16) - 1.0))
+    }
+}
+
+impl Brane<u16> {
+    /// save brane to a .tif file
+    fn save_raw(&self, variable: String) {
+        let path_name = format!("static/{}-u16-{}.tif", variable, self.resolution.release());
+        trace!("saving brane to {}", path_name);
+        TiffEncoder::new(&mut fs::File::create(&Path::new(&path_name)).unwrap())
+            .unwrap()
+            .write_image::<colortype::Gray16>(
+                self.resolution.release() as u32,
+                self.resolution.release() as u32,
+                &self.grid,
+            )
+            .unwrap();
     }
 
-    /// returns neighbouring datums
-    pub fn ambit_exact(&self, datum: &DatumZa) -> [DatumZa; 6] {
-        datum.ambit_toroidal(self.resolution as i32)
+    /// load brane with a given name from a .tif file
+    fn load_raw(variable: String) -> Self {
+        let mut varextended = variable;
+        varextended.push_str("-u16");
+
+        let resolution: Resolution = {
+            let mut files = Vec::new();
+            if let Ok(entries) = fs::read_dir("static") {
+                for entry in entries.flatten() {
+                    if let Ok(name) = entry.file_name().into_string() {
+                        if name.starts_with(&varextended) {
+                            files.push(name);
+                        }
+                    }
+                }
+            }
+            let mut resolutions = files
+                .iter()
+                .map(|file| {
+                    file[varextended.len() + 1..file.len() - 4]
+                        .parse::<usize>()
+                        .expect("variable contains something weird")
+                })
+                .collect::<Vec<usize>>();
+            resolutions.sort_unstable();
+            Resolution::confine(
+                resolutions
+                    .pop()
+                    .expect("found no brane for specified variable"),
+            )
+        };
+
+        let path_name = format!("static/{}-{}.tif", varextended, resolution.release());
+        trace!("loading brane from {}", path_name);
+        let mut file = fs::File::open(&Path::new(&path_name)).unwrap();
+        let mut tiff = Decoder::new(&mut file).unwrap();
+
+        Self::new(
+            match tiff.read_image().unwrap() {
+                DecodingResult::U16(vector) => vector,
+                _ => panic!(),
+            },
+            resolution,
+        )
+    }
+}
+
+impl<T> Brane<T>
+where
+    T: Clone + Copy + PartialOrd,
+{
+    fn quantile(&self, q: f64) -> T {
+        let mut v = self.grid.clone();
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[(v.len() as f64 * q) as usize]
+    }
+
+    fn minimum(&self) -> T {
+        *self
+            .grid
+            .iter()
+            .min_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap()
+    }
+
+    fn maximum(&self) -> T {
+        *self
+            .grid
+            .iter()
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap()
+    }
+
+    fn median(&self) -> T {
+        self.quantile(0.5)
     }
 }
 
 impl Brane<f64> {
+    /*
+    /* # saving and loading */
+
+    /// save brane to a .tif file
+    fn save_raw(&self, variable: String) {
+        Brane::<u16>::from(self.clone()).save_raw(variable);
+    }
+
+    /// load brane with a given name from a .tif file
+    fn load_raw(variable: String) -> Self {
+        Self::from(Brane::<u16>::load_raw(variable))
+    }
+    */
+
+    /* # statistics */
+
+    fn mean(&self) -> f64 {
+        self.grid.iter().sum::<f64>() / self.resolution.square() as f64
+    }
+
+    fn variance(&self) -> f64 {
+        let mean = self.mean();
+        self.grid.iter().map(|j| (j - mean).powi(2)).sum::<f64>()
+            / (self.resolution.square() - 1) as f64
+    }
+
+    pub fn stats_raw(&self) {
+        println!("statistics for brane");
+        println!("    minimum:    {:.6}", self.minimum());
+        println!("    mediam:     {:.6}", self.median());
+        println!("    mean:       {:.6}", self.mean());
+        println!("    maximum:    {:.6}", self.maximum());
+        println!("    deviation:  {:.6}", self.variance().sqrt());
+    }
+
+    /* # utility */
+
+    fn normalise_raw(&mut self) {
+        let (min, max) = (self.minimum(), self.maximum());
+        for value in self.grid.iter_mut() {
+            *value = value
+                .mul_add((max - min).recip(), -min * (max - min).recip())
+                .min(1.)
+                .max(0.);
+        }
+    }
+
     /// get a value interpolated from nearest coordinates
-    pub fn compute(&self, datum: &DatumRe) -> f64 {
-        let target = *datum * self.resolution as f64;
+    fn compute(&self, datum: DatumRe) -> f64 {
+        let target = datum * self.resolution.into();
         let corners = target.rhombus();
-        let values = corners.map(|datum| self.grid[datum.unravel_safe(self.resolution)]);
+        let values = corners.map(|datum| self.grid[datum.unravel(self.resolution)]);
+        let corners = corners.map(DatumRe::from);
         Spline::from_vec(vec![
             Key::new(
-                corners[0].y as f64,
+                corners[0].y,
                 Spline::from_vec(vec![
-                    Key::new(corners[0].x as f64, values[0], Interpolation::Linear),
-                    Key::new(corners[1].x as f64, values[1], Interpolation::default()),
+                    Key::new(corners[0].x, values[0], Interpolation::Linear),
+                    Key::new(corners[1].x, values[1], Interpolation::default()),
                 ])
                 .sample(target.x)
                 .unwrap(),
                 Interpolation::Linear,
             ),
             Key::new(
-                corners[3].y as f64,
+                corners[3].y,
                 Spline::from_vec(vec![
-                    Key::new(corners[2].x as f64, values[2], Interpolation::Linear),
-                    Key::new(corners[3].x as f64, values[3], Interpolation::default()),
+                    Key::new(corners[2].x, values[2], Interpolation::Linear),
+                    Key::new(corners[3].x, values[3], Interpolation::default()),
                 ])
                 .sample(target.x)
                 .unwrap(),
@@ -93,397 +286,70 @@ impl Brane<f64> {
         .sample(target.y)
         .unwrap()
     }
-
-    /// upscale brane to a higher resolution
-    pub fn upscale(&self, target: usize) -> Self {
-        if self.resolution == target {
-            self.clone()
-        } else {
-            Self {
-                grid: (0..target.pow(2))
-                    .into_par_iter()
-                    .map(|j| self.compute(&DatumZa::enravel(j, target).cast(target)))
-                    .collect::<Vec<f64>>(),
-                resolution: target,
-                variable: self.variable.clone(),
-            }
-        }
-    }
 }
 
-impl<T: Clone> Brane<T> {
-    /// read a value at given coordinate
-    pub fn read(&self, datum: &DatumZa) -> T {
-        self.grid[datum.unravel(self.resolution)].clone()
-    }
+/* # impl unit branes */
 
-    /// get a value nearest to given coordinate
-    pub fn get(&self, datum: &DatumRe) -> T {
-        self.read(&datum.floor(self.resolution))
-    }
-}
-
-impl<T: Zero + Clone> Brane<T> {
-    /// create a new brane filled with zeros
-    pub fn zeros(resolution: usize) -> Self {
-        Self {
-            grid: vec![T::zero(); resolution.pow(2)],
-            resolution,
-            variable: "zeros".to_string(),
-        }
-    }
-}
-
-macro_rules! impl_op_internal {
-    ($trait:ident, $method:ident, $op:tt) => {
-        impl<T: $trait> $trait for Brane<T>
-        where
-            Vec<T>: FromIterator<<T as $trait>::Output>,
-        {
-            type Output = Self;
-
-            fn $method(self, other: Self) -> Self {
-                Self {
-                    grid: self
-                        .grid
-                        .into_iter()
-                        .zip(other.grid.into_iter())
-                        .map(|(x, y)| x $op y)
-                        .collect::<Vec<T>>(),
-                    resolution: self.resolution,
-                    variable: format!("op-{}-{}", self.variable, other.variable),
-                }
-            }
-        }
-    };
-}
-
-macro_rules! impl_op_external {
-    ($trait:ident, $method:ident, $op:tt) => {
-        impl<T: $trait + Copy> $trait<T> for Brane<T>
-        where
-            Vec<T>: FromIterator<<T as $trait>::Output>,
-        {
-            type Output = Self;
-
-            fn $method(self, other: T) -> Self {
-                Self {
-                    grid: self
-                        .grid
-                        .into_iter()
-                        .map(|x| x $op other)
-                        .collect::<Vec<T>>(),
-                    resolution: self.resolution,
-                    variable: format!("op-{}", self.variable),
-                }
-            }
-        }
-    };
-}
-
-impl_op_internal!(Add, add, +);
-impl_op_internal!(Sub, sub, -);
-impl_op_external!(Add, add, +);
-impl_op_external!(Sub, sub, -);
-impl_op_external!(Mul, mul, *);
-impl_op_external!(Div, div, /);
-
-impl<T: MulAdd + Copy> Brane<T>
+impl<U> Brane<U>
 where
-    Vec<T>: FromIterator<<T as MulAdd>::Output>,
-    T: MulAdd<Output = T>,
+    U: Unit + Send + Copy,
+    U::Raw: Send,
 {
-    pub fn mul_add(self, xmul: T, xadd: T) -> Self {
-        Self {
-            grid: self
-                .grid
-                .into_iter()
-                .map(|x| x.mul_add(xmul, xadd))
-                .collect::<Vec<T>>(),
-            resolution: self.resolution,
-            variable: format!("muladd-{}", self.variable),
-        }
-    }
-
-    pub fn mul_add_inplace(&mut self, xmul: T, xadd: T) {
-        for value in self.grid.iter_mut() {
-            *value = value.mul_add(xmul, xadd);
-        }
+    /// unwrap monad
+    pub fn release(&self) -> Brane<U::Raw> {
+        self.operate_by_value_ref(|value| value.release())
     }
 }
 
-fn find_resolution(variable: &str) -> usize {
-    let mut files = Vec::new();
-    if let Ok(entries) = fs::read_dir("static") {
-        for entry in entries.flatten() {
-            if let Ok(name) = entry.file_name().into_string() {
-                if name.starts_with(variable) {
-                    files.push(name);
-                }
-            }
-        }
-    }
-    let mut resolutions = files
-        .iter()
-        .map(|file| {
-            file[variable.len() + 1..file.len() - 4]
-                .parse::<usize>()
-                .expect("variable contains something weird")
-        })
-        .collect::<Vec<usize>>();
-    resolutions.sort_unstable();
-    resolutions
-        .pop()
-        .expect("found no brane for specified variable")
-}
-
-// saving and loading could probably be refactored with a macro
-
-impl Brane<u8> {
+impl<U> Brane<U>
+where
+    U: Unit + Send + Copy,
+    U::Raw: Send,
+    Brane<u16>: From<Brane<U::Raw>>,
+{
     /// save brane to a .tif file
-    pub fn save(&self) {
-        let path_name = format!("static/{}-u8-{}.tif", self.variable, self.resolution);
-        trace!("saving brane to {}", path_name);
-        TiffEncoder::new(&mut fs::File::create(&Path::new(&path_name)).unwrap())
-            .unwrap()
-            .write_image::<colortype::Gray8>(
-                self.resolution as u32,
-                self.resolution as u32,
-                &self.grid,
-            )
-            .unwrap();
+    pub fn save(&self, variable: String) {
+        Brane::<u16>::from(self.release()).save_raw(variable);
     }
-
+}
+impl<U> Brane<U>
+where
+    U: Unit + Send,
+    U::Raw: Send,
+    Brane<U::Raw>: From<Brane<u16>>,
+{
     /// load brane with a given name from a .tif file
     pub fn load(variable: String) -> Self {
-        let mut varextended = variable;
-        varextended.push_str("-u8");
-        let path_name = format!(
-            "static/{}-{}.tif",
-            varextended,
-            find_resolution(&varextended),
-        );
-        trace!("loading brane from {}", path_name);
-        let mut file = fs::File::open(&Path::new(&path_name)).unwrap();
-        let mut tiff = Decoder::new(&mut file).unwrap();
-
-        Self::from(match tiff.read_image().unwrap() {
-            DecodingResult::U8(vector) => vector,
-            _ => panic!(),
-        })
+        Brane::<U::Raw>::from(Brane::<u16>::load_raw(variable))
+            .operate_by_value(|value| U::confine(value))
     }
 }
 
-impl Brane<u16> {
-    /// save brane to a .tif file
-    pub fn save(&self) {
-        let path_name = format!("static/{}-u16-{}.tif", self.variable, self.resolution);
-        trace!("saving brane to {}", path_name);
-        TiffEncoder::new(&mut fs::File::create(&Path::new(&path_name)).unwrap())
-            .unwrap()
-            .write_image::<colortype::Gray16>(
-                self.resolution as u32,
-                self.resolution as u32,
-                &self.grid,
-            )
-            .unwrap();
-    }
-
-    /// load brane with a given name from a .tif file
-    pub fn load(variable: String) -> Self {
-        let mut varextended = variable;
-        varextended.push_str("-u16");
-        let path_name = format!(
-            "static/{}-{}.tif",
-            varextended,
-            find_resolution(&varextended),
-        );
-        trace!("loading brane from {}", path_name);
-        let mut file = fs::File::open(&Path::new(&path_name)).unwrap();
-        let mut tiff = Decoder::new(&mut file).unwrap();
-
-        Self::from(match tiff.read_image().unwrap() {
-            DecodingResult::U16(vector) => vector,
-            _ => panic!(),
-        })
-    }
-}
-
-impl Brane<f64> {
-    /// save brane to a .tif file
-    pub fn save(&self) {
-        Brane::<u16>::from(self).save();
-    }
-
-    /// load brane with a given name from a .tif file
-    pub fn load(variable: String) -> Self {
-        Self::from(&Brane::<u16>::load(variable))
-    }
-
-    pub fn min(&self) -> f64 {
-        *self
-            .grid
-            .iter()
-            .min_by(|a, b| a.partial_cmp(b).unwrap())
-            .unwrap()
-    }
-
-    pub fn mde(&self) -> f64 {
-        let buckets = self.resolution / 6;
-        let mut histogram = HashMap::new();
-        for j in 0..buckets {
-            histogram.insert(j, 0);
-        }
-        for value in self.grid.iter() {
-            let counter = histogram
-                .entry((value * buckets as f64).floor() as usize)
-                .or_insert(0);
-            *counter += 1;
-        }
-        let maxbucket = *histogram
-            .iter()
-            .max_by(|a, b| a.1.cmp(b.1))
-            .map(|(k, _v)| k)
-            .unwrap();
-        (maxbucket as f64 + 0.5) * (buckets as f64).recip()
-    }
-
-    pub fn max(&self) -> f64 {
-        *self
-            .grid
-            .iter()
-            .max_by(|a, b| a.partial_cmp(b).unwrap())
-            .unwrap()
-    }
-
-    pub fn normalise(&mut self) {
-        let (min, max) = (self.min(), self.max());
-        for value in self.grid.iter_mut() {
-            *value = value
-                .mul_add((max - min).recip(), -min * (max - min).recip())
-                .min(1.)
-                .max(0.);
-        }
-    }
-
-    /// print out basic statistical information
+impl<U> Brane<U>
+where
+    U: Unit<Raw = f64> + Send + Copy,
+{
     pub fn stats(&self) {
-        println!("stats for {}", self.variable);
-        println!("minimum: {}", self.min());
-        println!("mode: {}", self.mde());
-        println!("median: {}", {
-            let mut v = self.grid.clone();
-            v.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            (v[v.len() / 2] + v[v.len() / 2 + 1]) * 0.5
-        });
-        println!(
-            "mean: {}",
-            self.grid.iter().sum::<f64>() / self.grid.len() as f64
-        );
-        println!("standard error: {}", {
-            let mean = self.grid.iter().sum::<f64>() / self.grid.len() as f64;
-            (self.grid.iter().map(|j| (j - mean).powi(2)).sum::<f64>() / self.grid.len() as f64)
-                .sqrt()
-        });
-        println!("maximum: {}", self.max());
+        self.release().stats_raw();
     }
 
-    pub fn hist(&self) {
-        let buckets = 42;
-        let mut histogram = HashMap::new();
-        for j in 0..buckets {
-            histogram.insert(j, 0);
-        }
-        for value in self.grid.iter() {
-            let counter = histogram
-                .entry((value * buckets as f64).floor() as usize)
-                .or_insert(0);
-            *counter += 1;
-        }
-        for j in 0..buckets {
-            println!(
-                "{:.2}:{:.2} : {:.4}",
-                j as f64 / buckets as f64,
-                (j + 1) as f64 / buckets as f64,
-                *histogram.get(&j).unwrap() as f64 / self.grid.len() as f64
-            );
-        }
+    /// scale values to the [0,1] interval
+    pub fn normalise(&self) -> Self {
+        let mut raw = self.release();
+        raw.normalise_raw();
+        raw.operate_by_value(|value| U::confine(value))
     }
-}
 
-impl From<&Brane<f64>> for Brane<u8> {
-    fn from(brane: &Brane<f64>) -> Self {
-        Brane {
-            grid: brane
-                .grid
-                .clone()
-                .into_par_iter()
-                .map(|value| (value * 2.0_f64.powi(8) - 1.0) as u8)
-                .collect(),
-            resolution: brane.resolution,
-            variable: brane.variable.clone(),
-        }
-    }
-}
-
-impl From<&Brane<f64>> for Brane<u16> {
-    fn from(brane: &Brane<f64>) -> Self {
-        Brane {
-            grid: brane
-                .grid
-                .clone()
-                .into_par_iter()
-                .map(|value| (value * 2.0_f64.powi(16) - 1.0) as u16)
-                .collect(),
-            resolution: brane.resolution,
-            variable: brane.variable.clone(),
-        }
-    }
-}
-
-impl From<&Brane<u8>> for Brane<f64> {
-    fn from(brane: &Brane<u8>) -> Self {
-        Brane {
-            grid: brane
-                .grid
-                .clone()
-                .into_par_iter()
-                .map(|value| value as f64 / (2.0_f64.powi(8) - 1.0))
-                .collect(),
-            resolution: brane.resolution,
-            variable: brane.variable.clone(),
-        }
-    }
-}
-
-impl From<&Brane<u16>> for Brane<f64> {
-    fn from(brane: &Brane<u16>) -> Self {
-        Brane {
-            grid: brane
-                .grid
-                .clone()
-                .into_par_iter()
-                .map(|value| value as f64 / (2.0_f64.powi(16) - 1.0))
-                .collect(),
-            resolution: brane.resolution,
-            variable: brane.variable.clone(),
-        }
-    }
-}
-
-impl<T> From<Vec<T>> for Brane<T> {
-    fn from(vector: Vec<T>) -> Self {
-        let square = vector.len();
-        let resolution = (square as f64).sqrt() as usize;
-        if resolution.pow(2) == square {
-            Brane {
-                grid: vector,
-                resolution,
-                variable: "from-vec".to_string(),
+    /// change the resolution of the brane
+    pub fn upscale(&self, target: Resolution) -> Self {
+        match self.resolution == target {
+            true => self.clone(),
+            false => {
+                let raw = self.release();
+                Self::create_by_index(target, |j| {
+                    U::confine(raw.compute(DatumZa::enravel(j, target).cast(target)))
+                })
             }
-        } else {
-            error!("cannot convert from unsquare vector");
-            panic!("cannot convert from unsquare vector");
         }
     }
 }
@@ -491,83 +357,91 @@ impl<T> From<Vec<T>> for Brane<T> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::units::Elevation;
     use float_eq::assert_float_eq;
     const EPSILON: f64 = 0.001;
 
     /* # branes */
 
     #[test]
-    fn brane_read() {
-        let brane = Brane {
-            grid: vec![0, 1, 2, 3],
-            resolution: 2,
-            variable: "test".to_string(),
-        };
-        assert_eq!(brane.read(&DatumZa { x: 1, y: 0 }), 2);
-        assert_eq!(brane.read(&DatumZa { x: 0, y: 1 }), 1);
-    }
-
-    #[test]
-    fn brane_get() {
-        let brane = Brane {
-            grid: vec![0, 1, 2, 3],
-            resolution: 2,
-            variable: "test".to_string(),
-        };
-        assert_eq!(brane.get(&DatumRe { x: 0.5, y: 0.0 }), 2);
-        assert_eq!(brane.get(&DatumRe { x: 0.0, y: 0.5 }), 1);
-    }
-
-    #[test]
-    fn brane_from_vec() {
-        assert_eq!(Brane::from(vec![0, 1, 2, 3]).grid, vec![0, 1, 2, 3]);
-    }
-
-    #[test]
-    #[should_panic]
-    #[allow(unused_must_use)]
-    fn brane_from_unsquare_vec() {
-        Brane::from(vec![0, 1, 2]);
-    }
-
-    #[test]
     fn brane_type_conversion() {
+        let res = Resolution::confine(2);
         let brane_f64 = Brane {
             grid: vec![0.0_f64, 0.5, 1.0, 0.5],
-            resolution: 4,
-            variable: "test".to_string(),
+            resolution: res,
         };
         let brane_u16 = Brane {
             grid: vec![0_u16, 32767, 65535, 32767],
-            resolution: 4,
-            variable: "test".to_string(),
+            resolution: res,
         };
-        let brane_u8 = Brane {
-            grid: vec![0_u8, 127, 255, 127],
-            resolution: 4,
-            variable: "test".to_string(),
-        };
-        assert_eq!(Brane::<u16>::from(&brane_f64).grid, brane_u16.grid);
-        assert_eq!(Brane::<u8>::from(&brane_f64).grid, brane_u8.grid);
+        assert_eq!(Brane::<u16>::from(brane_f64.clone()).grid, brane_u16.grid);
         assert_float_eq!(
-            Brane::<f64>::from(&brane_u16).grid,
+            Brane::<f64>::from(brane_u16.clone()).grid,
             brane_f64.grid,
             rmax <= vec![4.0 * EPSILON; 4]
         );
-        assert_float_eq!(
-            Brane::<f64>::from(&brane_u8).grid,
-            brane_f64.grid,
-            rmax <= vec![4.0 * EPSILON; 4]
+    }
+
+    #[test]
+    fn brane_save_load() {
+        let brane = Brane::<u16>::new(vec![0, 16384, 32768, 65535], Resolution::confine(2));
+        brane.save_raw("test-write-rawu16".to_string());
+        assert!(Path::new("static/test-write-rawu16-u16-2.tif").exists());
+        assert_eq!(
+            Brane::<u16>::load_raw("test-write-rawu16".to_string()).grid,
+            brane.grid
         );
+
+        /*
+        let brane = Brane::<f64>::new(vec![0.0, 0.25, 0.5, 0.75], Resolution::confine(2));
+        brane.save_raw("test-write-rawf64".to_string());
+        assert!(Path::new("static/test-write-rawf64-u16-2.tif").exists());
+        assert_float_eq!(
+            Brane::<f64>::load_raw("test-write-rawf64".to_string()).grid,
+            brane.grid,
+            rmax <= vec![EPSILON; 4]
+        );
+        */
+
+        let brane = Brane::<Elevation>::new(
+            vec![
+                Elevation::confine(0.0),
+                Elevation::confine(0.25),
+                Elevation::confine(0.5),
+                Elevation::confine(0.75),
+            ],
+            Resolution::confine(2),
+        );
+        brane.save("test-write-elevation".to_string());
+        assert!(Path::new("static/test-write-elevation-u16-2.tif").exists());
+        assert_float_eq!(
+            Brane::<Elevation>::load("test-write-elevation".to_string())
+                .release()
+                .grid,
+            brane.release().grid,
+            rmax <= vec![EPSILON; 4]
+        );
+
+        fs::remove_file("static/test-write-rawu16-u16-2.tif").expect("test failed");
+        //fs::remove_file("static/test-write-rawf64-u16-2.tif").expect("test failed");
+        fs::remove_file("static/test-write-elevation-u16-2.tif").expect("test failed");
     }
 
     #[test]
     fn brane_upscale() {
-        let brane = Brane::from(vec![0.0, 1.0, 2.0, 3.0]);
-        let upscaled = brane.upscale(3);
+        let brane = Brane::new(
+            vec![
+                Elevation::confine(0.0),
+                Elevation::confine(1.0),
+                Elevation::confine(2.0),
+                Elevation::confine(3.0),
+            ],
+            Resolution::confine(2),
+        );
+        let upscaled = brane.upscale(Resolution::confine(3));
         assert_eq!(upscaled.grid.len(), 9);
         assert_float_eq!(
-            upscaled.grid,
+            upscaled.release().grid,
             vec![
                 0.0,
                 2.0 / 3.0,
@@ -581,86 +455,5 @@ mod test {
             ],
             abs <= vec![EPSILON; 9]
         );
-    }
-
-    #[test]
-    fn brane_zeros() {
-        assert_eq!(Brane::<u8>::zeros(4).grid, vec![0; 16]);
-        assert_eq!(Brane::<u16>::zeros(4).grid, vec![0; 16]);
-        assert_float_eq!(
-            Brane::<f64>::zeros(4).grid,
-            vec![0.0; 16],
-            abs <= vec![EPSILON; 16]
-        );
-    }
-
-    #[test]
-    fn brane_add_self() {
-        assert_eq!(
-            (Brane::from(vec![0, 1, 2, 3]) + Brane::from(vec![1, 2, 3, 4])).grid,
-            Brane::from(vec![1, 3, 5, 7]).grid
-        );
-    }
-
-    #[test]
-    fn brane_sub_self() {
-        assert_eq!(
-            (Brane::from(vec![1, 2, 3, 4]) - Brane::from(vec![0, 1, 2, 3])).grid,
-            Brane::from(vec![1, 1, 1, 1]).grid
-        );
-    }
-
-    #[test]
-    fn brane_add() {
-        assert_eq!(
-            (Brane::from(vec![1, 2, 3, 4]) + 2).grid,
-            Brane::from(vec![3, 4, 5, 6]).grid
-        );
-    }
-
-    #[test]
-    fn brane_sub() {
-        assert_eq!(
-            (Brane::from(vec![1, 2, 3, 4]) - 1).grid,
-            Brane::from(vec![0, 1, 2, 3]).grid
-        );
-    }
-
-    #[test]
-    fn brane_mul() {
-        assert_eq!(
-            (Brane::from(vec![1, 2, 3, 4]) * 2).grid,
-            Brane::from(vec![2, 4, 6, 8]).grid
-        );
-    }
-
-    #[test]
-    fn brane_div() {
-        assert_eq!(
-            (Brane::from(vec![2, 4, 6, 8]) / 2).grid,
-            Brane::from(vec![1, 2, 3, 4]).grid
-        );
-    }
-
-    #[test]
-    fn brane_save_load() {
-        let mut brane = Brane::<u8>::from(vec![0, 64, 128, 255]);
-        brane.variable = "test-write".to_string();
-        brane.save();
-        assert!(Path::new("static/test-write-u8-2.tif").exists());
-        assert_eq!(Brane::<u8>::load("test-write".to_string()).grid, brane.grid);
-
-        let mut brane = Brane::<f64>::from(vec![0.0, 0.25, 0.5, 0.75]);
-        brane.variable = "test-write".to_string();
-        brane.save();
-        assert!(Path::new("static/test-write-u16-2.tif").exists());
-        assert_float_eq!(
-            Brane::<f64>::load("test-write".to_string()).grid,
-            brane.grid,
-            rmax <= vec![EPSILON; 4]
-        );
-
-        fs::remove_file("static/test-write-u8-2.tif").expect("test failed");
-        fs::remove_file("static/test-write-u16-2.tif").expect("test failed");
     }
 }

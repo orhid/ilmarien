@@ -1,35 +1,23 @@
 #[allow(unused_imports)]
-/*
 use ilmarien::{
-    carto::{colour as clr, render::Renderable},
+    carto::{brane::Resolution, colour as clr, render::Renderable},
     climate::geology::ocean_level,
     units::Unit,
 };
-*/
 use log::info;
 
 // use std::thread;
 
-/*
 #[allow(dead_code)]
-fn gen_terrain(res: usize, seed: u32) {
-    use ilmarien::carto::brane::Brane;
+fn gen_terrain(res: Resolution, seed: u32) {
     use ilmarien::climate::geology::bedrock_elevation;
 
-    let mut altitude = bedrock_elevation(res, seed);
-    altitude.variable = format!("{}-alt", seed);
-    Brane::from(
-        altitude
-            .grid
-            .iter()
-            .map(|j| j.release())
-            .collect::<Vec<f64>>(),
-    )
-    .stats();
-    println!("ocean lv: {}", ocean_level(&altitude).release());
-    altitude.render(clr::TopographyInk::new(ocean_level(&altitude)));
+    let altitude = bedrock_elevation(res, seed);
+    let variable = format!("{}-alt", seed);
+    altitude.stats();
+    altitude.save(variable.clone());
+    altitude.render(variable, clr::TopographyInk::new(ocean_level(&altitude)));
 }
-*/
 
 /*
 #[allow(dead_code)]
@@ -74,6 +62,6 @@ fn run_many() {
 fn main() {
     pretty_env_logger::init_timed();
     info!("initialising ilmarien");
-    // gen_terrain(324, 0);
+    gen_terrain(Resolution::confine(324), 0);
     info!("computation completed")
 }

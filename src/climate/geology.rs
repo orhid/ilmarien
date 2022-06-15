@@ -1,11 +1,11 @@
 use crate::{
     carto::{
-        brane::Brane,
+        brane::{Brane, Resolution},
         datum::{DatumRe, DatumZa},
-        flux::Flux,
+        //        flux::Flux,
         honeycomb::HoneyCellToroidal,
     },
-    climate::{hydrology::shed, vegetation::Vege},
+    //    climate::{hydrology::shed, vegetation::Vege},
     units::{Elevation, Unit},
 };
 use log::trace;
@@ -15,7 +15,6 @@ use petgraph::{
     visit::EdgeRef,
     Direction,
 };
-use rayon::prelude::*;
 use splines::{Interpolation, Key, Spline};
 use std::collections::VecDeque;
 use std::f64::consts::TAU;
@@ -58,7 +57,7 @@ fn bedrock_elevation_at_datum(
 }
 
 /// generate a bedrock elevation model from noise
-pub fn bedrock_elevation(resolution: usize, seed: u32) -> Brane<Elevation> {
+pub fn bedrock_elevation(resolution: Resolution, seed: u32) -> Brane<Elevation> {
     trace!("generating bedrock elevation model");
 
     let noise = OpenSimplex::new().set_seed(seed);
@@ -77,6 +76,15 @@ pub fn bedrock_elevation(resolution: usize, seed: u32) -> Brane<Elevation> {
         ])
     };
 
+    Brane::<Elevation>::create_by_index(resolution, |j| {
+        bedrock_elevation_at_datum(
+            &DatumZa::enravel(j, resolution).cast(resolution),
+            &noise,
+            &elevation_curve,
+        )
+    })
+
+    /*
     Brane::from(
         (0..resolution.pow(2))
             .into_par_iter()
@@ -89,6 +97,7 @@ pub fn bedrock_elevation(resolution: usize, seed: u32) -> Brane<Elevation> {
             })
             .collect::<Vec<Elevation>>(),
     )
+    */
 }
 
 pub fn ocean_level(elevation: &Brane<Elevation>) -> Elevation {
@@ -111,6 +120,7 @@ pub fn ocean_level(elevation: &Brane<Elevation>) -> Elevation {
 
 /* # ... */
 
+/*
 pub fn bedrock_vege(elevation: &Brane<f64>, ocean: f64) -> Brane<Option<Vege>> {
     Brane::from(
         (0..elevation.resolution.pow(2))
@@ -125,23 +135,19 @@ pub fn bedrock_vege(elevation: &Brane<f64>, ocean: f64) -> Brane<Option<Vege>> {
             .collect::<Vec<Option<Vege>>>(),
     )
 }
+*/
 
 /* # continentality */
 
 pub fn elevation_above_ocean(elevation: &Brane<Elevation>, ocean: Elevation) -> Brane<Elevation> {
-    Brane::from(
-        (0..elevation.resolution.pow(2))
-            .into_par_iter()
-            .map(|j| {
-                let elevation_here = elevation.grid[j];
-                if elevation_here > ocean {
-                    elevation_here
-                } else {
-                    ocean
-                }
-            })
-            .collect::<Vec<Elevation>>(),
-    )
+    elevation.operate_by_index(|j| {
+        let elevation_here = elevation.grid[j];
+        if elevation_here > ocean {
+            elevation_here
+        } else {
+            ocean
+        }
+    })
 }
 
 /// find distance to closest ocean, going around mountains
@@ -152,32 +158,20 @@ pub fn continentality(elevation: &Brane<Elevation>, ocean: Elevation) -> Brane<f
     let mountains_elevation: i32 = 1728;
 
     // find mountain tiles
-    let mountain_tiles: Brane<bool> = Brane::from(
-        (0..resolution.pow(2))
-            .into_par_iter()
-            .map(|j| elevation.grid[j].meters() > ocean.meters() + mountains_elevation)
-            .collect::<Vec<bool>>(),
-    );
+    let mountain_tiles: Brane<bool> = Brane::create_by_index(resolution, |j| {
+        elevation.grid[j].meters() > ocean.meters() + mountains_elevation
+    });
 
     // find ocean tiles
-    let ocean_tiles: Brane<bool> = Brane::from(
-        (0..resolution.pow(2))
-            .into_par_iter()
-            .map(|j| elevation.grid[j] < ocean)
-            .collect::<Vec<bool>>(),
-    );
+    let ocean_tiles: Brane<bool> =
+        Brane::create_by_index(resolution, |j| elevation.grid[j] < ocean);
 
-    let mut continentality = Brane::from(
-        mountain_tiles
-            .grid
-            .par_iter()
-            .map(|b| if *b { Some(-1) } else { None })
-            .collect::<Vec<Option<i32>>>(),
-    );
+    let mut continentality: Brane<Option<i32>> =
+        mountain_tiles.operate_by_value(|b| if b { Some(-1) } else { None });
 
     // poulate oceans with zeros
     let mut ocean_datums = VecDeque::new();
-    for index in 0..resolution.pow(2) {
+    for index in 0..resolution.square() {
         if ocean_tiles.grid[index] {
             continentality.grid[index] = Some(0);
             ocean_datums.push_back(DatumZa::enravel(index, resolution));
@@ -187,7 +181,7 @@ pub fn continentality(elevation: &Brane<Elevation>, ocean: Elevation) -> Brane<f
     // flood fill from ocean datums
     while !ocean_datums.is_empty() {
         let here = ocean_datums.pop_front().unwrap();
-        for datum in here.ambit_toroidal(resolution as i32) {
+        for datum in here.ambit_toroidal(resolution.into()) {
             let index = datum.unravel(resolution);
             if continentality.grid[index].is_none() {
                 continentality.grid[index] = Some(
@@ -200,23 +194,18 @@ pub fn continentality(elevation: &Brane<Elevation>, ocean: Elevation) -> Brane<f
         }
     }
 
-    Brane::from(
-        continentality
-            .grid
-            .into_par_iter()
-            .map(|j| match j {
-                Some(v) => match v {
-                    -1 => 1.0,
-                    x => 12. * (x as f64) / (resolution as f64),
-                },
-                None => 1.0,
-            })
-            .collect::<Vec<f64>>(),
-    )
+    continentality.operate_by_value(|j| match j {
+        Some(v) => match v {
+            -1 => 1.0,
+            x => 12. * (x as f64) / (Into::<f64>::into(resolution)),
+        },
+        None => 1.0,
+    })
 }
 
 /* # erosion */
 
+/*
 const MAX_RAIN: f64 = 24.0;
 const MAX_DELTA: f64 = 0.1296;
 const BOUNCEBACK: f64 = 0.012;
@@ -257,21 +246,23 @@ pub fn erode(elevation: &mut Brane<f64>, rain: &Brane<f64>) {
         }
     }
 }
+*/
 
 #[cfg(test)]
 mod test {
     use super::*;
     use float_eq::{assert_float_eq, assert_float_ne};
     const EPSILON: f64 = 0.0000_01;
+    const RES: Resolution = Resolution::confine(6);
 
     #[test]
     fn bedrock_elevation_values() {
-        let brane = bedrock_elevation(6, 0);
+        let brane = bedrock_elevation(RES, 0);
         assert_float_eq!(brane.grid[0].release(), 0.264407, abs <= EPSILON);
         assert_float_eq!(brane.grid[8].release(), 0.273077, abs <= EPSILON);
         assert_float_eq!(brane.grid[24].release(), 0.285910, abs <= EPSILON);
 
-        let brane = bedrock_elevation(6, 1);
+        let brane = bedrock_elevation(RES, 1);
         assert_float_ne!(brane.grid[0].release(), 0.264407, abs <= EPSILON);
         assert_float_ne!(brane.grid[8].release(), 0.273077, abs <= EPSILON);
         assert_float_ne!(brane.grid[24].release(), 0.285910, abs <= EPSILON);
@@ -299,12 +290,8 @@ mod test {
     #[test]
     fn continentality_values() {
         let brane = continentality(
-            &Brane::from(
-                (0..36)
-                    .map(|j| Elevation::new((j % 6) as f64))
-                    .collect::<Vec<Elevation>>(),
-            ),
-            Elevation::new(3_f64.recip()),
+            &Brane::create_by_index(RES, |j| Elevation::confine((j % 6) as f64)),
+            Elevation::confine(3_f64.recip()),
         );
         assert_float_eq!(brane.grid[0], 0.0, abs <= EPSILON);
         assert_float_eq!(brane.grid[5], 1.0, abs <= EPSILON);

@@ -1,6 +1,8 @@
-pub trait Unit<T> {
-    fn confine(value: T) -> Self;
-    fn release(self) -> T;
+pub trait Unit {
+    type Raw;
+
+    fn confine(value: Self::Raw) -> Self;
+    fn release(self) -> Self::Raw;
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
@@ -12,12 +14,13 @@ impl Elevation {
     }
 }
 
-impl Unit<f64> for Elevation {
-    fn confine(value: f64) -> Self {
+impl Unit for Elevation {
+    type Raw = f64;
+    fn confine(value: Self::Raw) -> Self {
         Self(value)
     }
 
-    fn release(self) -> f64 {
+    fn release(self) -> Self::Raw {
         self.0
     }
 }

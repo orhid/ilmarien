@@ -1,4 +1,4 @@
-use crate::climate::vegetation::Vege;
+// use crate::climate::vegetation::Vege;
 
 /* # colour spaces */
 
@@ -134,26 +134,6 @@ impl Ink<f64> for BiHueInk {
 
 use crate::units::Elevation;
 
-pub struct TemperatureInk;
-
-impl Ink<f64> for TemperatureInk {
-    fn paint(&self, sample: f64) -> String {
-        BiHueInk::new(0.96, 0.54, 0.92).paint(sample.mul_add(1.0, -0.3))
-    }
-}
-
-pub struct CelciusInk;
-
-impl Ink<f64> for CelciusInk {
-    fn paint(&self, sample: f64) -> String {
-        BiHueInk::new(0.96, 0.54, 0.92).paint(if sample > 0.0 {
-            sample / 36.0
-        } else {
-            sample / 6.0
-        })
-    }
-}
-
 pub struct TopographyInk {
     ocean_level: Elevation,
 }
@@ -187,6 +167,29 @@ impl Ink<Elevation> for TopographyInk {
     }
 }
 
+/*
+pub struct TemperatureInk;
+
+impl Ink<f64> for TemperatureInk {
+    fn paint(&self, sample: f64) -> String {
+        BiHueInk::new(0.96, 0.54, 0.92).paint(sample.mul_add(1.0, -0.3))
+    }
+}
+
+pub struct CelciusInk;
+
+impl Ink<f64> for CelciusInk {
+    fn paint(&self, sample: f64) -> String {
+        BiHueInk::new(0.96, 0.54, 0.92).paint(if sample > 0.0 {
+            sample / 36.0
+        } else {
+            sample / 6.0
+        })
+    }
+}
+*/
+
+/*
 pub struct KoppenInk;
 
 impl Ink<Option<Vege>> for KoppenInk {
@@ -210,32 +213,6 @@ impl Ink<Option<Vege>> for KoppenInk {
         }
     }
 }
-
-/*
-Koppen::Af => RGB::new(34, 70, 122).paint(),
-Koppen::Am => RGB::new(43, 94, 153).paint(),
-Koppen::As => RGB::new(51, 122, 184).paint(),
-Koppen::BWh => RGB::new(184, 104, 51).paint(),
-Koppen::BWc => RGB::new(184, 51, 65).paint(),
-Koppen::BSh => RGB::new(214, 145, 99).paint(),
-Koppen::BSc => RGB::new(214, 99, 110).paint(),
-Koppen::Cfa => RGB::new(184, 170, 51).paint(),
-Koppen::Cfc => RGB::new(214, 201, 86).paint(),
-Koppen::Csa => RGB::new(120, 153, 43).paint(),
-Koppen::Csc => RGB::new(151, 184, 73).paint(),
-Koppen::Cwa => RGB::new(52, 122, 34).paint(),
-Koppen::Cwc => RGB::new(80, 153, 61).paint(),
-Koppen::Dfa => RGB::new(43, 153, 109).paint(),
-Koppen::Dfc => RGB::new(73, 184, 140).paint(),
-Koppen::Dfd => RGB::new(111, 214, 173).paint(),
-Koppen::Dsa => RGB::new(98, 43, 153).paint(),
-Koppen::Dsc => RGB::new(129, 73, 184).paint(),
-Koppen::Dsd => RGB::new(163, 111, 214).paint(),
-Koppen::Dwa => RGB::new(122, 34, 87).paint(),
-Koppen::Dwc => RGB::new(153, 61, 116).paint(),
-Koppen::Dwd => RGB::new(184, 95, 148).paint(),
-Koppen::EF => RGB::new(245, 218, 215).paint(),
-Koppen::ET => RGB::new(235, 150, 159).paint(),
 */
 
 #[cfg(test)]

@@ -1,3 +1,4 @@
+use crate::carto::brane::Resolution;
 use geo::Coordinate;
 use ord_subset::OrdSubsetIterExt;
 use std::{
@@ -112,40 +113,41 @@ impl From<DatumRe> for DatumZa {
 
 impl DatumZa {
     /// transform into a Real Datum inside the unit square
-    pub fn cast(self, resolution: usize) -> DatumRe {
-        DatumRe::from(self) / resolution as f64
+    pub fn cast(self, resolution: Resolution) -> DatumRe {
+        DatumRe::from(self) / resolution.into()
     }
 
     /// create from a linear index
-    pub fn enravel(index: usize, resolution: usize) -> Self {
+    pub fn enravel(index: usize, resolution: Resolution) -> Self {
         Self {
-            x: (index / resolution) as i32,
-            y: (index % resolution) as i32,
+            x: (index / resolution.release()) as i32,
+            y: (index % resolution.release()) as i32,
         }
     }
 
     /// transform into a linear index
-    pub fn unravel(self, resolution: usize) -> usize {
-        self.x as usize * resolution + self.y as usize
+    pub fn unravel_unstable(self, resolution: Resolution) -> usize {
+        self.x as usize * resolution.release() + self.y as usize
     }
 
     /// transform into a linear index carefully
-    pub fn unravel_safe(self, resolution: usize) -> usize {
-        self.x as usize % resolution * resolution + self.y as usize % resolution
+    pub fn unravel(self, resolution: Resolution) -> usize {
+        self.x as usize % resolution.release() * resolution.release()
+            + self.y as usize % resolution.release()
     }
 }
 
 impl DatumRe {
     /// transform into a Zahl Datum
-    pub fn find(self, resolution: usize) -> DatumZa {
-        DatumZa::from(self * resolution as f64)
+    pub fn find(self, resolution: Resolution) -> DatumZa {
+        DatumZa::from(self * resolution.into())
     }
 
     /// transform into a Zahl Datum faster by simply flooring
-    pub fn floor(self, resolution: usize) -> DatumZa {
+    pub fn floor(self, resolution: Resolution) -> DatumZa {
         DatumZa {
-            x: (self.x * resolution as f64) as i32,
-            y: (self.y * resolution as f64) as i32,
+            x: (self.x * Into::<f64>::into(resolution)) as i32,
+            y: (self.y * Into::<f64>::into(resolution)) as i32,
         }
     }
 
@@ -257,62 +259,64 @@ mod test {
         );
     }
 
+    const RES: Resolution = Resolution::confine(4);
+
     #[test]
     fn datum_cast() {
-        assert_eq!(DatumZa::new(0, 0).cast(4), DatumRe::new(0.0, 0.0));
-        assert_eq!(DatumZa::new(0, 1).cast(4), DatumRe::new(0.0, 0.25));
-        assert_eq!(DatumZa::new(1, 0).cast(4), DatumRe::new(0.25, 0.0));
+        assert_eq!(DatumZa::new(0, 0).cast(RES), DatumRe::new(0.0, 0.0));
+        assert_eq!(DatumZa::new(0, 1).cast(RES), DatumRe::new(0.0, 0.25));
+        assert_eq!(DatumZa::new(1, 0).cast(RES), DatumRe::new(0.25, 0.0));
     }
 
     #[test]
     fn datum_find() {
-        assert_eq!(DatumRe::new(0.0, 0.0).find(4), DatumZa::new(0, 0));
-        assert_eq!(DatumRe::new(0.0, 0.25).find(4), DatumZa::new(0, 1));
-        assert_eq!(DatumRe::new(0.25, 0.0).find(4), DatumZa::new(1, 0));
+        assert_eq!(DatumRe::new(0.0, 0.0).find(RES), DatumZa::new(0, 0));
+        assert_eq!(DatumRe::new(0.0, 0.25).find(RES), DatumZa::new(0, 1));
+        assert_eq!(DatumRe::new(0.25, 0.0).find(RES), DatumZa::new(1, 0));
     }
 
     #[test]
     fn datum_cast_find() {
         let datum = DatumZa::new(0, 1);
-        assert_eq!(datum.cast(4).find(4), datum);
+        assert_eq!(datum.cast(RES).find(RES), datum);
         let datum = DatumZa::new(1, 0);
-        assert_eq!(datum.cast(4).find(4), datum);
+        assert_eq!(datum.cast(RES).find(RES), datum);
     }
 
     #[test]
     fn datum_find_cast() {
         let datum = DatumRe::new(0.0, 0.25);
-        assert_eq!(datum.find(4).cast(4), datum);
+        assert_eq!(datum.find(RES).cast(RES), datum);
         let datum = DatumRe::new(0.25, 0.0);
-        assert_eq!(datum.find(4).cast(4), datum);
+        assert_eq!(datum.find(RES).cast(RES), datum);
     }
 
     #[test]
     fn datum_enravel() {
-        assert_eq!(DatumZa::enravel(0, 4), DatumZa::new(0, 0));
-        assert_eq!(DatumZa::enravel(1, 4), DatumZa::new(0, 1));
-        assert_eq!(DatumZa::enravel(4, 4), DatumZa::new(1, 0));
+        assert_eq!(DatumZa::enravel(0, RES), DatumZa::new(0, 0));
+        assert_eq!(DatumZa::enravel(1, RES), DatumZa::new(0, 1));
+        assert_eq!(DatumZa::enravel(4, RES), DatumZa::new(1, 0));
     }
 
     #[test]
     fn datum_unravel() {
-        assert_eq!(DatumZa::new(0, 0).unravel(4), 0);
-        assert_eq!(DatumZa::new(0, 1).unravel(4), 1);
-        assert_eq!(DatumZa::new(1, 0).unravel(4), 4);
+        assert_eq!(DatumZa::new(0, 0).unravel(RES), 0);
+        assert_eq!(DatumZa::new(0, 1).unravel(RES), 1);
+        assert_eq!(DatumZa::new(1, 0).unravel(RES), 4);
     }
 
     #[test]
     fn datum_enravel_unravel() {
-        assert_eq!(DatumZa::enravel(0, 4).unravel(4), 0);
-        assert_eq!(DatumZa::enravel(1, 4).unravel(4), 1);
-        assert_eq!(DatumZa::enravel(4, 4).unravel(4), 4);
+        assert_eq!(DatumZa::enravel(0, RES).unravel(RES), 0);
+        assert_eq!(DatumZa::enravel(1, RES).unravel(RES), 1);
+        assert_eq!(DatumZa::enravel(4, RES).unravel(RES), 4);
     }
 
     #[test]
     fn datum_unravel_enravel() {
         let datum = DatumZa::new(0, 1);
-        assert_eq!(DatumZa::enravel(datum.unravel(4), 4), datum);
+        assert_eq!(DatumZa::enravel(datum.unravel(RES), RES), datum);
         let datum = DatumZa::new(1, 0);
-        assert_eq!(DatumZa::enravel(datum.unravel(4), 4), datum);
+        assert_eq!(DatumZa::enravel(datum.unravel(RES), RES), datum);
     }
 }
