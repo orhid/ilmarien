@@ -2,13 +2,11 @@ use crate::{
     carto::{
         brane::{Brane, Resolution},
         datum::{DatumRe, DatumZa},
-        // flux::Flux,
         honeycomb::Hexagon,
     },
     units::{Elevation, Temperature, Unit},
 };
 use log::trace;
-//use rayon::prelude::*;
 use std::f64::consts::TAU;
 
 /* # insolation */
@@ -49,7 +47,7 @@ pub fn crve(t: f64) -> DatumRe {
     ellipse.uncentre()
 }
 
-pub fn insolation_at_datum(datum: DatumRe, solar_time: f64) -> f64 {
+fn insolation_at_datum(datum: DatumRe, solar_time: f64) -> f64 {
     let solar_ellipse = |time: f64| -> DatumRe { crve(time) };
 
     // encodes the relationship between the ground distance between points
@@ -98,46 +96,24 @@ pub fn temperature_at_ocean_level(
     }
 }
 
-pub fn temperature_at_elevation(
+pub fn temperature_at_altitude(
     temperature_at_ocean: &Brane<Temperature>,
-    elevation: &Brane<Elevation>,
-    ocean: Elevation,
+    altitude_above_ocean: &Brane<Elevation>,
 ) -> Brane<Temperature> {
-    trace!("calculating temperature at elevation");
+    trace!("calculating temperature at altitude");
     let lapse_rate = 144f64.recip(); // fall in temperature for one meter
-    let lapse_value = |elevation: Elevation, ocean: Elevation| -> f64 {
-        (elevation.meters() - ocean.meters()).max(0) as f64 * lapse_rate
-    };
+    let lapse_value = |altitude: Elevation| -> f64 { altitude.meters() as f64 * lapse_rate };
     temperature_at_ocean.operate_by_index(|j| {
         Temperature::from_celcius(
-            temperature_at_ocean.grid[j].celcius() - lapse_value(elevation.grid[j], ocean),
+            temperature_at_ocean.grid[j].celcius() - lapse_value(altitude_above_ocean.grid[j]),
         )
     })
 }
-
-/*
-/// calculate pressure at ocean level
-fn pressure(temperature: &Brane<f64>) -> Brane<f64> {
-    trace!("calculating pressure at ocean level");
-    let smoothing_coef: f64 = 6.0_f64.recip();
-    temperature
-        .upscale((temperature.resolution as f64 * smoothing_coef) as usize)
-        .upscale(temperature.resolution)
-        .mul_add(-1.0, 1.0)
-}
-
-/// calculate pressure gradient
-pub fn wind(temperature: &Brane<f64>) -> Flux<f64> {
-    trace!("calculating pressure gradient");
-    Flux::<f64>::from(&pressure(temperature))
-}
-*/
 
 #[cfg(test)]
 mod test {
     use super::*;
     use float_eq::{assert_float_eq, assert_float_ne};
-    // use ord_subset::OrdSubsetIterExt;
     const EPSILON: f64 = 0.0000_01;
     const RES: Resolution = Resolution::confine(6);
 
@@ -149,67 +125,105 @@ mod test {
             Brane::<f64>::create_by_datum(RES, |datum| insolation_at_datum(datum, 0.5));
         let brane_one = Brane::<f64>::create_by_datum(RES, |datum| insolation_at_datum(datum, 1.0));
 
-        assert_float_eq!(brane_zero.grid[0], 0.0, abs <= EPSILON);
-        assert_float_eq!(brane_zero.grid[8], 0.0, abs <= EPSILON);
-        assert_float_eq!(brane_zero.grid[24], 0.0, abs <= EPSILON);
+        assert_float_eq!(brane_zero.grid[0], 0., abs <= EPSILON);
+        assert_float_eq!(brane_zero.grid[8], 1., abs <= EPSILON);
+        assert_float_eq!(brane_zero.grid[24], 2., abs <= EPSILON);
 
         assert_float_eq!(brane_zero.grid[0], brane_one.grid[0], abs <= EPSILON);
         assert_float_eq!(brane_zero.grid[8], brane_one.grid[8], abs <= EPSILON);
         assert_float_eq!(brane_zero.grid[24], brane_one.grid[24], abs <= EPSILON);
 
-        assert_float_ne!(brane_half.grid[0], 0.0, abs <= EPSILON);
-        assert_float_ne!(brane_half.grid[8], 0.0, abs <= EPSILON);
-        assert_float_ne!(brane_half.grid[24], 0.0, abs <= EPSILON);
+        assert_float_ne!(brane_half.grid[0], 0., abs <= EPSILON);
+        assert_float_ne!(brane_half.grid[8], 1., abs <= EPSILON);
+        assert_float_ne!(brane_half.grid[24], 2., abs <= EPSILON);
     }
 
     #[test]
-    fn temperature_lapse() {
-        let brane = temperature_at_elevation(
-            &Brane::new(vec![Temperature::confine(1.); 36], Resolution::confine(6)),
-            &Brane::create_by_index(Resolution::confine(6), |j| {
-                Elevation::confine(j as f64 / 36.)
-            }),
-            Elevation::confine(0.),
+    fn temperature_average_values() {
+        let brane = temperature_average(RES);
+        assert_float_eq!(brane.grid[0].release(), 0., abs <= EPSILON);
+        assert_float_eq!(brane.grid[8].release(), 1., abs <= EPSILON);
+        assert_float_eq!(brane.grid[24].release(), 2., abs <= EPSILON);
+    }
+
+    #[test]
+    fn temperature_at_ocean_level_values() {
+        let brane = temperature_at_ocean_level(
+            0.,
+            &temperature_average(RES),
+            &Brane::<f64>::create_by_index(RES, |j| (j % 2) as f64),
+        );
+        assert_float_eq!(brane.grid[0].release(), 0., abs <= EPSILON);
+        assert_float_eq!(brane.grid[8].release(), 1., abs <= EPSILON);
+        assert_float_eq!(brane.grid[24].release(), 2., abs <= EPSILON);
+    }
+
+    #[test]
+    fn temperature_at_ocean_level_match() {
+        let avg = temperature_average(RES);
+        let brane_zero = temperature_at_ocean_level(
+            0.,
+            &avg,
+            &Brane::<f64>::create_by_index(RES, |j| (j % 2) as f64),
+        );
+        let brane_half = temperature_at_ocean_level(
+            0.5,
+            &avg,
+            &Brane::<f64>::create_by_index(RES, |j| (j % 2) as f64),
+        );
+        let brane_one = temperature_at_ocean_level(
+            1.,
+            &avg,
+            &Brane::<f64>::create_by_index(RES, |j| (j % 2) as f64),
+        );
+
+        assert_float_eq!(
+            avg.grid[0].release(),
+            brane_zero.grid[0].release(),
+            abs <= EPSILON
+        );
+        assert_float_eq!(
+            avg.grid[0].release(),
+            brane_half.grid[0].release(),
+            abs <= EPSILON
+        );
+        assert_float_eq!(
+            avg.grid[0].release(),
+            brane_one.grid[0].release(),
+            abs <= EPSILON
+        );
+
+        assert_float_ne!(
+            avg.grid[1].release(),
+            brane_zero.grid[1].release(),
+            abs <= EPSILON
+        );
+        assert_float_ne!(
+            avg.grid[1].release(),
+            brane_half.grid[1].release(),
+            abs <= EPSILON
+        );
+
+        assert_float_eq!(
+            brane_zero.grid[1].release(),
+            brane_one.grid[1].release(),
+            abs <= EPSILON
+        );
+        assert_float_ne!(
+            brane_zero.grid[1].release(),
+            brane_half.grid[1].release(),
+            abs <= EPSILON
+        );
+    }
+
+    #[test]
+    fn temperature_lapse_values() {
+        let brane = temperature_at_altitude(
+            &Brane::new(vec![Temperature::confine(1.); 36], RES),
+            &Brane::create_by_index(RES, |j| Elevation::confine(j as f64 / 36.)),
         );
         assert_float_eq!(brane.grid[0].release(), 1., abs <= EPSILON);
         assert_float_eq!(brane.grid[8].release(), 0.703704, abs <= EPSILON);
         assert_float_eq!(brane.grid[24].release(), 0.111111, abs <= EPSILON);
     }
-    /*
-
-    #[test]
-    fn temperature_oceanlv_values() {
-        let temp_ocean = temperature_oceanlv(0.0, &Brane::from(vec![0.0; 36]));
-        assert!(*temp_ocean.grid.iter().ord_subset_max().unwrap() < 1.0 - TMP_MINSTABLE);
-        assert!(*temp_ocean.grid.iter().ord_subset_min().unwrap() > TMP_MINSTABLE);
-
-        assert_float_eq!(temp_ocean.grid[0], 0.568309, abs <= EPSILON);
-        assert_float_eq!(temp_ocean.grid[8], 0.270136, abs <= EPSILON);
-        assert_float_eq!(temp_ocean.grid[24], 0.254137, abs <= EPSILON);
-
-        let temp_land = temperature_oceanlv(0.0, &Brane::from(vec![1.0; 36]));
-        assert!(*temp_land.grid.iter().ord_subset_max().unwrap() < 1.0);
-        assert!(*temp_land.grid.iter().ord_subset_min().unwrap() > 0.0);
-        assert_float_eq!(temp_land.grid.iter().sum::<f64>() / 36.0, 0.3, abs <= 0.001);
-
-        assert_float_eq!(temp_land.grid[0], 0.844150, abs <= EPSILON);
-        assert_float_eq!(temp_land.grid[8], 0.195948, abs <= EPSILON);
-        assert_float_eq!(temp_land.grid[24], 0.161167, abs <= EPSILON);
-
-        let temp_land = temperature_oceanlv(0.1, &Brane::from(vec![1.0; 36]));
-        assert_float_ne!(temp_land.grid[0], 0.844150, abs <= EPSILON);
-        assert_float_ne!(temp_land.grid[8], 0.195948, abs <= EPSILON);
-        assert_float_ne!(temp_land.grid[24], 0.161167, abs <= EPSILON);
-    }
-
-    #[test]
-    fn pressure_values() {
-        let brane = pressure(&Brane::from(
-            (0..36).map(|j| j as f64 / 36.0).collect::<Vec<f64>>(),
-        ));
-        assert_float_eq!(brane.grid[0], 1.0, abs <= EPSILON);
-        assert_float_eq!(brane.grid[8], 1.0, abs <= EPSILON);
-        assert_float_eq!(brane.grid[24], 1.0, abs <= EPSILON);
-    }
-    */
 }

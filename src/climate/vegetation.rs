@@ -1,5 +1,4 @@
 use crate::climate::chart::Zone;
-//use ord_subset::OrdSubsetIterExt;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Vege {
@@ -17,6 +16,7 @@ pub enum Vege {
     Broadleaf,
 }
 
+/*
 impl Vege {
     pub fn array() -> Vec<Self> {
         vec![
@@ -35,7 +35,9 @@ impl Vege {
         ]
     }
 }
+*/
 
+/*
 /// amount of water that could be evaporated
 pub fn hydro_potential(cell: Option<Vege>) -> f64 {
     match cell {
@@ -77,9 +79,11 @@ pub fn habitability(cell: Option<Vege>) -> f64 {
         None => 0.,
     }
 }
+*/
 
 const ARID_FACTOR: f64 = 0.72;
 
+/*
 impl From<&Vege> for Zone {
     fn from(vege: &Vege) -> Self {
         match vege {
@@ -100,6 +104,7 @@ impl From<&Vege> for Zone {
         }
     }
 }
+*/
 
 impl From<&Zone> for Vege {
     fn from(zone: &Zone) -> Self {
@@ -108,51 +113,63 @@ impl From<&Zone> for Vege {
         } else {
             match zone.aridity {
                 a if a > 1.44 * ARID_FACTOR => {
-                    if zone.tmax < 0.0 {
+                    if zone.tmax.celcius() < 0. {
                         Vege::Frost
-                    } else if zone.tmin > 18.0 {
+                    } else if zone.tmin.celcius() > 18. {
                         Vege::Broadleaf // rainforest
-                    } else if 3.0 * zone.tmin + zone.tmax - 12.0 * zone.swing - 36.0 < 0.0 {
+                    } else if 3. * zone.tmin.celcius() + zone.tmax.celcius()
+                        - 12. * zone.swing
+                        - 36.
+                        < 0.
+                    {
                         Vege::Taiga // coniferous but wetter
                     } else {
                         Vege::Monsoon //decidous but wetter
                     }
                 }
                 a if a > 0.72 * ARID_FACTOR => {
-                    if zone.tmax < 0.0 {
+                    if zone.tmax.celcius() < 0. {
                         Vege::Frost
-                    } else if zone.tmin > 24.0 {
+                    } else if zone.tmin.celcius() > 24. {
                         Vege::Shrub
-                    } else if 9.0 * zone.tmin + zone.tmax - 36.0 * zone.swing - 60.0 < 0.0 {
+                    } else if 9. * zone.tmin.celcius() + zone.tmax.celcius()
+                        - 36. * zone.swing
+                        - 60.
+                        < 0.
+                    {
                         Vege::Coniferous
                     } else {
                         Vege::Decideous
                     }
                 }
                 a if a > 0.36 * ARID_FACTOR => {
-                    if zone.tmax < 0.0 {
+                    if zone.tmax.celcius() < 0. {
                         Vege::Frost
-                    } else if zone.tmin > 18.0 {
+                    } else if zone.tmin.celcius() > 18. {
                         Vege::Savanna
-                    } else if zone.tmin + zone.tmax - 6.0 * zone.swing - 30.0 > 0.0 {
+                    } else if zone.tmin.celcius() + zone.tmax.celcius() - 6. * zone.swing - 30. > 0.
+                    {
                         Vege::Shrub
-                    } else if 5.0 * zone.tmin + 3.0 * zone.tmax + 24.0 * zone.swing - 24.0 < 0.0 {
+                    } else if 5. * zone.tmin.celcius() + 3. * zone.tmax.celcius() + 24. * zone.swing
+                        - 24.
+                        < 0.
+                    {
                         Vege::Tundra
                     } else {
                         Vege::Prairie
                     }
                 }
-                a if a > 0.06 * ARID_FACTOR => {
-                    if zone.tmax < 0.0 {
+                a if a > 0.6 * ARID_FACTOR => {
+                    if zone.tmax.celcius() < 0. {
                         Vege::Frost
-                    } else if zone.tmin > 3.0 {
+                    } else if zone.tmin.celcius() > 3. {
                         Vege::Sand
                     } else {
                         Vege::Stone
                     }
                 }
                 _ => {
-                    if zone.tmin > 0.0 {
+                    if zone.tmin.celcius() > 0. {
                         Vege::Sand
                     } else {
                         Vege::Stone

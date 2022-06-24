@@ -1,4 +1,4 @@
-// use crate::climate::vegetation::Vege;
+use crate::climate::vegetation::Vege;
 
 /* # colour spaces */
 
@@ -197,7 +197,6 @@ impl Ink<Temperature> for CelciusInk {
     }
 }
 
-/*
 pub struct KoppenInk;
 
 impl Ink<Option<Vege>> for KoppenInk {
@@ -221,7 +220,6 @@ impl Ink<Option<Vege>> for KoppenInk {
         }
     }
 }
-*/
 
 #[cfg(test)]
 mod test {

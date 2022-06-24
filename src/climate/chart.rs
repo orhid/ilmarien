@@ -1,9 +1,4 @@
-/// this module contains the Zone and Chart Structs
-/// which are used to classify points in space into climate types
 use crate::units::{Precipitation, Temperature, Unit};
-//use ord_subset::OrdSubsetIterExt;
-
-//const TMP_RANGE: f64 = 72.0;
 
 pub struct Zone {
     pub aridity: f64,
@@ -54,29 +49,33 @@ impl From<&Chart> for Zone {
 pub struct Chart {
     heat: Vec<Temperature>,
     rain: Vec<Precipitation>,
-    peva: Vec<Precipitation>,
+    pevt: Vec<Precipitation>,
 }
 
 impl Chart {
-    pub fn new() -> Self {
+    pub fn empty() -> Self {
         Self {
             heat: Vec::new(),
             rain: Vec::new(),
-            peva: Vec::new(),
+            pevt: Vec::new(),
         }
     }
 
-    pub fn push(&mut self, heat: Temperature, rain: Precipitation, peva: Precipitation) {
+    pub fn new(heat: Vec<Temperature>, rain: Vec<Precipitation>, pevt: Vec<Precipitation>) -> Self {
+        Self { heat, rain, pevt }
+    }
+
+    pub fn push(&mut self, heat: Temperature, rain: Precipitation, pevt: Precipitation) {
         self.heat.push(heat);
         self.rain.push(rain);
-        self.peva.push(peva);
+        self.pevt.push(pevt);
     }
 
     /// fucking backwards defined aridity index
     fn aridity_index(&self) -> f64 {
         self.rain.iter().map(|value| value.release()).sum::<f64>()
             * self
-                .peva
+                .pevt
                 .iter()
                 .map(|value| value.release())
                 .sum::<f64>()
@@ -119,12 +118,6 @@ impl Chart {
     }
 }
 
-impl Default for Chart {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -151,7 +144,7 @@ mod test {
         let z1 = Zone::from(&Chart {
             heat: Vec::from([Temperature::confine(1.), Temperature::confine(2.)]),
             rain: Vec::from([Precipitation::confine(1.), Precipitation::confine(3.)]),
-            peva: Vec::from([Precipitation::confine(1.), Precipitation::confine(3.)]),
+            pevt: Vec::from([Precipitation::confine(1.), Precipitation::confine(3.)]),
         });
         assert_float_eq!(z0.aridity, z1.aridity, abs <= EPSILON);
         assert_float_eq!(z0.swing, z1.swing, abs <= EPSILON);
@@ -161,7 +154,7 @@ mod test {
 
     #[test]
     fn zone_from_empty_chart() {
-        let z = Zone::from(&Chart::new());
+        let z = Zone::from(&Chart::empty());
         assert!(z.aridity.is_nan());
         assert!(z.swing.is_nan());
         assert!(z.tmin.release().is_nan());
@@ -174,7 +167,7 @@ mod test {
         let mut chart = Chart {
             heat: Vec::from([Temperature::confine(1.), Temperature::confine(2.)]),
             rain: Vec::from([Precipitation::confine(1.), Precipitation::confine(2.)]),
-            peva: Vec::from([Precipitation::confine(1.), Precipitation::confine(2.)]),
+            pevt: Vec::from([Precipitation::confine(1.), Precipitation::confine(2.)]),
         };
         chart.push(
             Temperature::confine(3.),
@@ -193,7 +186,7 @@ mod test {
                 Precipitation::confine(1.),
                 Precipitation::confine(1.),
             ]),
-            peva: Vec::from([
+            pevt: Vec::from([
                 Precipitation::confine(2.),
                 Precipitation::confine(2.),
                 Precipitation::confine(2.),
@@ -207,7 +200,7 @@ mod test {
         let chart = Chart {
             heat: Vec::from([Temperature::confine(1.), Temperature::confine(3.)]),
             rain: Vec::from([Precipitation::confine(1.), Precipitation::confine(3.)]),
-            peva: Vec::new(),
+            pevt: Vec::new(),
         };
         assert_float_eq!(chart.swing(), 0.321655, abs <= EPSILON);
     }
@@ -217,7 +210,7 @@ mod test {
         let chart = Chart {
             heat: Vec::from([Temperature::confine(1.), Temperature::confine(3.)]),
             rain: Vec::new(),
-            peva: Vec::new(),
+            pevt: Vec::new(),
         };
         assert_float_eq!(chart.tmin().release(), 1.0, abs <= EPSILON);
         assert_float_eq!(chart.tmax().release(), 3.0, abs <= EPSILON);

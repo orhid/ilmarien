@@ -299,6 +299,16 @@ impl Brane<f64> {
         .sample(target.y)
         .unwrap()
     }
+
+    /// change the resolution of the brane
+    pub fn upscale_raw(&self, target: Resolution) -> Self {
+        match self.resolution == target {
+            true => self.clone(),
+            false => Self::create_by_index(target, |j| {
+                self.compute(DatumZa::enravel(j, target).cast(target))
+            }),
+        }
+    }
 }
 
 /* # impl unit branes */

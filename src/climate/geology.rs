@@ -3,58 +3,25 @@ use crate::{
         brane::{Brane, Resolution},
         datum::{DatumRe, DatumZa},
         //        flux::Flux,
-        honeycomb::HoneyCellToroidal,
     },
     //    climate::{hydrology::shed, vegetation::Vege},
     units::{Elevation, Unit},
 };
 use log::trace;
 use noise::{NoiseFn, OpenSimplex, Seedable};
+/*
 use petgraph::{
     graph::{Graph, NodeIndex},
     visit::EdgeRef,
     Direction,
 };
+*/
 use splines::{Interpolation, Key, Spline};
-use std::collections::VecDeque;
 use std::f64::consts::TAU;
 
 const SQRT3B2: f64 = 0.8660254;
 
 /* # bedrock generation */
-
-fn bedrock_elevation_at_datum(
-    datum: &DatumRe,
-    noise: &OpenSimplex,
-    curve: &Spline<f64, f64>,
-) -> Elevation {
-    let fractional_brownian_motion = |x: f64, y: f64| {
-        (0..8)
-            .map(|level| {
-                let freq = 2f64.powi(level - 1);
-                1.8f64.powi(-level)
-                    * noise.get([
-                        // toroidal wrapping
-                        freq * x.cos(),
-                        freq * x.sin(),
-                        freq * SQRT3B2 * y.cos(), // undistort geometry on the hexagon
-                        freq * SQRT3B2 * y.sin(), // undistort geometry on the hexagon
-                    ])
-            })
-            .sum::<f64>()
-    };
-
-    let x: f64 = TAU * datum.x;
-    let y: f64 = TAU * (datum.x + datum.y); // undistort geometry on the hexagon
-    let toroidal_sample = {
-        fractional_brownian_motion(
-            x + fractional_brownian_motion(x, y),
-            y + fractional_brownian_motion(x, y),
-        )
-    };
-
-    Elevation::confine(curve.clamped_sample(0.84 * toroidal_sample).unwrap())
-}
 
 /// generate a bedrock elevation model from noise
 pub fn bedrock_elevation(resolution: Resolution, seed: u32) -> Brane<Elevation> {
@@ -76,11 +43,38 @@ pub fn bedrock_elevation(resolution: Resolution, seed: u32) -> Brane<Elevation> 
         ])
     };
 
+    let toroidal_sample = |datum: &DatumRe| -> f64 {
+        let fractional_brownian_motion = |x: f64, y: f64| {
+            (0..8)
+                .map(|level| {
+                    let freq = 2f64.powi(level - 1);
+                    1.8f64.powi(-level)
+                        * noise.get([
+                            // toroidal wrapping
+                            freq * x.cos(),
+                            freq * x.sin(),
+                            freq * SQRT3B2 * y.cos(), // undistort geometry on the hexagon
+                            freq * SQRT3B2 * y.sin(), // undistort geometry on the hexagon
+                        ])
+                })
+                .sum::<f64>()
+        };
+
+        let x: f64 = TAU * datum.x;
+        let y: f64 = TAU * (datum.x + datum.y); // undistort geometry on the hexagon
+        fractional_brownian_motion(
+            x + fractional_brownian_motion(x, y),
+            y + fractional_brownian_motion(x, y),
+        )
+    };
+
     Brane::<Elevation>::create_by_index(resolution, |j| {
-        bedrock_elevation_at_datum(
-            &DatumZa::enravel(j, resolution).cast(resolution),
-            &noise,
-            &elevation_curve,
+        Elevation::confine(
+            elevation_curve
+                .clamped_sample(
+                    0.84 * toroidal_sample(&DatumZa::enravel(j, resolution).cast(resolution)),
+                )
+                .unwrap(),
         )
     })
 }
@@ -103,91 +97,18 @@ pub fn ocean_level(elevation: &Brane<Elevation>) -> Elevation {
     )
 }
 
-/* # ... */
-
-/*
-pub fn bedrock_vege(elevation: &Brane<f64>, ocean: f64) -> Brane<Option<Vege>> {
-    Brane::from(
-        (0..elevation.resolution.pow(2))
-            .into_par_iter()
-            .map(|j| {
-                if elevation.grid[j] < ocean {
-                    None
-                } else {
-                    Some(Vege::Stone)
-                }
-            })
-            .collect::<Vec<Option<Vege>>>(),
-    )
+pub fn ocean_tiles(elevation: &Brane<Elevation>, ocean: Elevation) -> Brane<bool> {
+    elevation.operate_by_value_ref(|value| value < &ocean)
 }
-*/
 
-/* # continentality */
-/*
-pub fn elevation_above_ocean(elevation: &Brane<Elevation>, ocean: Elevation) -> Brane<Elevation> {
-    elevation.operate_by_index(|j| {
-        let elevation_here = elevation.grid[j];
-        if elevation_here > ocean {
-            elevation_here
-        } else {
-            ocean
-        }
+pub fn altitude_above_ocean_level(
+    elevation: &Brane<Elevation>,
+    ocean: Elevation,
+) -> Brane<Elevation> {
+    elevation.operate_by_value_ref(|value| {
+        Elevation::confine((value.release() - ocean.release()).max(0.))
     })
 }
-
-/// find distance to closest ocean, going around mountains
-pub fn continentality(elevation: &Brane<Elevation>, ocean: Elevation) -> Brane<f64> {
-    trace!("calculating continentality coefficients");
-
-    let resolution = elevation.resolution;
-    let mountains_elevation: i32 = 1728;
-
-    // find mountain tiles
-    let mountain_tiles: Brane<bool> = Brane::create_by_index(resolution, |j| {
-        elevation.grid[j].meters() > ocean.meters() + mountains_elevation
-    });
-
-    // find ocean tiles
-    let ocean_tiles: Brane<bool> =
-        Brane::create_by_index(resolution, |j| elevation.grid[j] < ocean);
-
-    let mut continentality: Brane<Option<i32>> =
-        mountain_tiles.operate_by_value(|b| if b { Some(-1) } else { None });
-
-    // poulate oceans with zeros
-    let mut ocean_datums = VecDeque::new();
-    for index in 0..resolution.square() {
-        if ocean_tiles.grid[index] {
-            continentality.grid[index] = Some(0);
-            ocean_datums.push_back(DatumZa::enravel(index, resolution));
-        }
-    }
-
-    // flood fill from ocean datums
-    while !ocean_datums.is_empty() {
-        let here = ocean_datums.pop_front().unwrap();
-        for datum in here.ambit_toroidal(resolution.into()) {
-            let index = datum.unravel(resolution);
-            if continentality.grid[index].is_none() {
-                continentality.grid[index] = Some(
-                    continentality.grid[here.unravel(resolution)]
-                        .expect("has already been assigned")
-                        + 1,
-                );
-                ocean_datums.push_back(datum);
-            }
-        }
-    }
-
-    continentality.operate_by_value(|j| match j {
-        Some(v) => match v {
-            -1 => 1.0,
-            x => 12. * (x as f64) / (Into::<f64>::into(resolution)),
-        },
-        None => 1.0,
-    })
-}
-*/
 
 /* # erosion */
 
@@ -253,36 +174,4 @@ mod test {
         assert_float_ne!(brane.grid[8].release(), 0.273077, abs <= EPSILON);
         assert_float_ne!(brane.grid[24].release(), 0.285910, abs <= EPSILON);
     }
-
-    #[test]
-    fn bedrock_elevation_tileability() {
-        let noise = OpenSimplex::new();
-        let curve: Spline<f64, f64> = Spline::from_vec(vec![
-            Key::new(0., 0., Interpolation::Linear),
-            Key::new(1., 1., Interpolation::Linear),
-        ]);
-        assert_float_eq!(
-            bedrock_elevation_at_datum(&DatumRe::new(0.0, 0.1), &noise, &curve).release(),
-            bedrock_elevation_at_datum(&DatumRe::new(0.0, 1.1), &noise, &curve).release(),
-            abs <= EPSILON,
-        );
-        assert_float_eq!(
-            bedrock_elevation_at_datum(&DatumRe::new(0.1, 0.0), &noise, &curve).release(),
-            bedrock_elevation_at_datum(&DatumRe::new(1.1, 0.0), &noise, &curve).release(),
-            abs <= EPSILON,
-        );
-    }
-
-    /*
-    #[test]
-    fn continentality_values() {
-        let brane = continentality(
-            &Brane::create_by_index(RES, |j| Elevation::confine((j % 6) as f64)),
-            Elevation::confine(3_f64.recip()),
-        );
-        assert_float_eq!(brane.grid[0], 0.0, abs <= EPSILON);
-        assert_float_eq!(brane.grid[5], 1.0, abs <= EPSILON);
-        assert_float_eq!(brane.grid[6], 0.0, abs <= EPSILON);
-    }
-    */
 }

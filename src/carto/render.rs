@@ -15,9 +15,6 @@ use svg::node::element::Path;
 
 // try to replace goe-orient with something and then dump the geo dependency in favour of geo-types
 
-use crate::carto::colour::HueInk;
-use crate::climate::radiation::crve;
-
 /* # geometry to svg */
 
 trait ToSVG {
@@ -137,6 +134,9 @@ impl<T: Clone + Copy> Renderable<T> for Brane<T> {
 
         /*
         // draw solar ellipse
+        use crate::carto::colour::HueInk;
+        use crate::climate::radiation::crve;
+
         let ellipse = Polygon::new(
             LineString::from(
                 (0..36)
