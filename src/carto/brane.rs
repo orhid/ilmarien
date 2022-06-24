@@ -68,6 +68,19 @@ impl<T: Send> Brane<T> {
         )
     }
 
+    pub fn create_by_datum<F>(resolution: Resolution, f: F) -> Self
+    where
+        F: Fn(DatumRe) -> T + Sync + Send,
+    {
+        Self::new(
+            (0..resolution.square())
+                .into_par_iter()
+                .map(|j| f(DatumZa::enravel(j, resolution).cast(resolution)))
+                .collect::<Vec<T>>(),
+            resolution,
+        )
+    }
+
     pub fn operate_by_index<F, S>(&self, f: F) -> Brane<S>
     where
         S: Send,

@@ -1,103 +1,121 @@
-use crate::carto::{
-    brane::Brane,
-    datum::{DatumRe, DatumZa},
-    flux::Flux,
-    honeycomb::{Hexagon, HoneyCellPlanar},
+use crate::{
+    carto::{
+        brane::{Brane, Resolution},
+        datum::{DatumRe, DatumZa},
+        // flux::Flux,
+        honeycomb::Hexagon,
+    },
+    units::{Elevation, Temperature, Unit},
 };
 use log::trace;
-use rayon::prelude::*;
+//use rayon::prelude::*;
 use std::f64::consts::TAU;
-
-const SOL_DETAIL: i32 = 12; // radius of suns taken for insolation calculation
-const SOL_HEIGHT: f64 = 1.0; // altitue of the sun
-const SOL_XDEV: f64 = 0.08; // amplidute of solar deviation
-const SOL_YDEV: f64 = 0.12; // amplidute of solar deviation
 
 /* # insolation */
 
-fn vector_elevation(datum: &DatumRe, elevation: f64) -> [f64; 3] {
-    let cdatum = datum.centre();
-    [cdatum.x, cdatum.y, elevation]
+pub fn crve(t: f64) -> DatumRe {
+    //TODO: hide this into insolation, once we are not rendering this
+    let eccentricity: f64 = 2f64.recip();
+    let radius_major: f64 = 3f64.recip();
+    let angle: f64 = -TAU * 6f64.recip();
+
+    let linear = eccentricity * radius_major;
+    let radius_minor = (radius_major.powi(2) - linear.powi(2)).sqrt();
+
+    // velocities come from the vis viva equation at abfocal and peryfocal points
+    let velo_max: f64 =
+        ((radius_major + linear) * (radius_major - linear).recip() * radius_major.recip()).sqrt();
+    let velo_min: f64 =
+        ((radius_major - linear) * (radius_major + linear).recip() * radius_major.recip()).sqrt();
+
+    // should approximate the changening speed of the orbiting body
+    //    due to the constant areal velocity
+    let time = TAU
+        * (velo_max * t - (7. * velo_max + 8. * velo_min - 15.) * t.powi(2)
+            + (18. * velo_max + 32. * velo_min - 50.) * t.powi(3)
+            - (20. * velo_max + 40. * velo_min - 60.) * t.powi(4)
+            + (8. * velo_max + 16. * velo_min - 24.) * t.powi(5));
+
+    let focus = DatumRe::new(linear * angle.cos(), linear * angle.sin());
+    let ellipse = focus
+        + DatumRe::new(
+            radius_major * angle.cos() * time.cos(),
+            radius_major * angle.sin() * time.cos(),
+        )
+        + DatumRe::new(
+            radius_minor * -angle.sin() * time.sin(),
+            radius_minor * angle.cos() * time.sin(),
+        );
+    ellipse.uncentre()
 }
 
-fn insolation_sol(pnt: [f64; 3], sol: [f64; 3]) -> f64 {
-    // turns out, the influence of both elevation and slope is negligable
-    let solward = [sol[0] - pnt[0], sol[1] - pnt[1], sol[2] - pnt[2]];
-    let solward_norm = solward.map(|j| j.powi(2)).iter().sum::<f64>().sqrt();
-    solward_norm.powi(-2) * solward[2] * solward_norm.recip()
+pub fn insolation_at_datum(datum: DatumRe, solar_time: f64) -> f64 {
+    let solar_ellipse = |time: f64| -> DatumRe { crve(time) };
+
+    // encodes the relationship between the ground distance between points
+    //    and the received insolation
+    let insolation_curve = |distance: f64| -> f64 { 1. - (TAU * 4f64.recip() * distance) };
+
+    insolation_curve(datum.distance(&solar_ellipse(solar_time)))
 }
 
-fn insolation_dt(datum: &DatumRe, solar_pos: f64) -> f64 {
-    // should return numbers from the [0,1] interval
-    // mean at around 0.3
+pub fn temperature_average(resolution: Resolution) -> Brane<Temperature> {
+    trace!("calculating average insolation");
 
-    DatumZa { x: 0, y: 0 }
-        .ball_planar(SOL_DETAIL)
-        .into_par_iter()
-        .map(|sol| {
-            insolation_sol(
-                vector_elevation(datum, 0.0),
-                vector_elevation(
-                    &(DatumRe::from(sol)
-                        + DatumRe {
-                            x: SOL_XDEV * (TAU * solar_pos).cos(),
-                            y: SOL_YDEV * (TAU * solar_pos).sin(),
-                        }),
-                    SOL_HEIGHT,
+    let detail = 6usize.pow(3);
+    Brane::<Temperature>::create_by_datum(resolution, |datum| {
+        Temperature::confine(
+            (0..detail)
+                .map(|time| insolation_at_datum(datum, time as f64 / detail as f64))
+                .sum::<f64>()
+                / detail as f64,
+        )
+    })
+}
+
+pub fn temperature_at_ocean_level(
+    solar_time: f64,
+    temperature_average: &Brane<Temperature>,
+    continentality: &Brane<f64>,
+) -> Brane<Temperature> {
+    trace!("calculating temperature at ocean level");
+    let temperature_value = |insol: f64, insol_avg: f64, cont: f64| -> Temperature {
+        Temperature::confine(insol_avg + 4. * cont * (insol_avg - insol))
+    };
+
+    match temperature_average.resolution == continentality.resolution {
+        true => continentality.operate_by_index(|j| {
+            temperature_value(
+                insolation_at_datum(
+                    DatumZa::enravel(j, continentality.resolution).cast(continentality.resolution),
+                    solar_time,
                 ),
+                temperature_average.grid[j].release(),
+                continentality.grid[j],
             )
-        })
-        .sum::<f64>()
-        .mul_add(2.56, -5.57573)
+        }),
+        false => panic!(),
+    }
 }
 
-/// coldest possible temperature at zero continentality
-const TMP_MINSTABLE: f64 = 0.18;
-
-fn temperature_oceanlv_dt(month: f64, datum: &DatumRe, continentality: f64) -> f64 {
-    let insolation = insolation_dt(datum, month); // * albedo
-    insolation + TMP_MINSTABLE * insolation.mul_add(-3.0, 1.0) * continentality.mul_add(-1.0, 1.0)
+pub fn temperature_at_elevation(
+    temperature_at_ocean: &Brane<Temperature>,
+    elevation: &Brane<Elevation>,
+    ocean: Elevation,
+) -> Brane<Temperature> {
+    trace!("calculating temperature at elevation");
+    let lapse_rate = 144f64.recip(); // fall in temperature for one meter
+    let lapse_value = |elevation: Elevation, ocean: Elevation| -> f64 {
+        (elevation.meters() - ocean.meters()).max(0) as f64 * lapse_rate
+    };
+    temperature_at_ocean.operate_by_index(|j| {
+        Temperature::from_celcius(
+            temperature_at_ocean.grid[j].celcius() - lapse_value(elevation.grid[j], ocean),
+        )
+    })
 }
 
-/// temperature values at ocean level
-pub fn temperature_oceanlv(month: f64, continentality: &Brane<f64>) -> Brane<f64> {
-    trace!("calculating temperature model");
-
-    // should return numbers from the [0,1] interval
-    Brane::from(
-        (0..continentality.resolution.pow(2))
-            .into_par_iter()
-            .map(|j| {
-                temperature_oceanlv_dt(
-                    month,
-                    &DatumZa::enravel(j, continentality.resolution).cast(continentality.resolution),
-                    continentality.grid[j],
-                )
-            })
-            .collect::<Vec<f64>>(),
-    )
-}
-
-const RATE_LAPSE: f64 = 2.16;
-
-/// calculate temperature lapse rate
-fn lapse_ix(temperature: f64, altitude: f64, ocean: f64) -> f64 {
-    temperature * ((1.0 - altitude + ocean) + (altitude - ocean) * (1.0 - RATE_LAPSE))
-}
-
-pub fn temperature(
-    temperature_oceanlv: &Brane<f64>,
-    altitude: &Brane<f64>,
-    ocean: f64,
-) -> Brane<f64> {
-    Brane::from(
-        (0..temperature_oceanlv.resolution.pow(2))
-            .into_par_iter()
-            .map(|j| lapse_ix(temperature_oceanlv.grid[j], altitude.grid[j], ocean))
-            .collect::<Vec<f64>>(),
-    )
-}
-
+/*
 /// calculate pressure at ocean level
 fn pressure(temperature: &Brane<f64>) -> Brane<f64> {
     trace!("calculating pressure at ocean level");
@@ -113,13 +131,51 @@ pub fn wind(temperature: &Brane<f64>) -> Flux<f64> {
     trace!("calculating pressure gradient");
     Flux::<f64>::from(&pressure(temperature))
 }
+*/
 
 #[cfg(test)]
 mod test {
     use super::*;
     use float_eq::{assert_float_eq, assert_float_ne};
-    use ord_subset::OrdSubsetIterExt;
+    // use ord_subset::OrdSubsetIterExt;
     const EPSILON: f64 = 0.0000_01;
+    const RES: Resolution = Resolution::confine(6);
+
+    #[test]
+    fn insolation_values() {
+        let brane_zero =
+            Brane::<f64>::create_by_datum(RES, |datum| insolation_at_datum(datum, 0.0));
+        let brane_half =
+            Brane::<f64>::create_by_datum(RES, |datum| insolation_at_datum(datum, 0.5));
+        let brane_one = Brane::<f64>::create_by_datum(RES, |datum| insolation_at_datum(datum, 1.0));
+
+        assert_float_eq!(brane_zero.grid[0], 0.0, abs <= EPSILON);
+        assert_float_eq!(brane_zero.grid[8], 0.0, abs <= EPSILON);
+        assert_float_eq!(brane_zero.grid[24], 0.0, abs <= EPSILON);
+
+        assert_float_eq!(brane_zero.grid[0], brane_one.grid[0], abs <= EPSILON);
+        assert_float_eq!(brane_zero.grid[8], brane_one.grid[8], abs <= EPSILON);
+        assert_float_eq!(brane_zero.grid[24], brane_one.grid[24], abs <= EPSILON);
+
+        assert_float_ne!(brane_half.grid[0], 0.0, abs <= EPSILON);
+        assert_float_ne!(brane_half.grid[8], 0.0, abs <= EPSILON);
+        assert_float_ne!(brane_half.grid[24], 0.0, abs <= EPSILON);
+    }
+
+    #[test]
+    fn temperature_lapse() {
+        let brane = temperature_at_elevation(
+            &Brane::new(vec![Temperature::confine(1.); 36], Resolution::confine(6)),
+            &Brane::create_by_index(Resolution::confine(6), |j| {
+                Elevation::confine(j as f64 / 36.)
+            }),
+            Elevation::confine(0.),
+        );
+        assert_float_eq!(brane.grid[0].release(), 1., abs <= EPSILON);
+        assert_float_eq!(brane.grid[8].release(), 0.703704, abs <= EPSILON);
+        assert_float_eq!(brane.grid[24].release(), 0.111111, abs <= EPSILON);
+    }
+    /*
 
     #[test]
     fn temperature_oceanlv_values() {
@@ -155,4 +211,5 @@ mod test {
         assert_float_eq!(brane.grid[8], 1.0, abs <= EPSILON);
         assert_float_eq!(brane.grid[24], 1.0, abs <= EPSILON);
     }
+    */
 }

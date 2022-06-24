@@ -132,6 +132,10 @@ impl Ink<f64> for BiHueInk {
 
 /* ## geographic inks */
 
+use crate::units::Unit;
+
+/* ### topography */
+
 use crate::units::Elevation;
 
 pub struct TopographyInk {
@@ -167,6 +171,8 @@ impl Ink<Elevation> for TopographyInk {
     }
 }
 
+/* ### temperature */
+
 /*
 pub struct TemperatureInk;
 
@@ -175,19 +181,21 @@ impl Ink<f64> for TemperatureInk {
         BiHueInk::new(0.96, 0.54, 0.92).paint(sample.mul_add(1.0, -0.3))
     }
 }
+*/
+
+use crate::units::Temperature;
 
 pub struct CelciusInk;
 
-impl Ink<f64> for CelciusInk {
-    fn paint(&self, sample: f64) -> String {
-        BiHueInk::new(0.96, 0.54, 0.92).paint(if sample > 0.0 {
-            sample / 36.0
+impl Ink<Temperature> for CelciusInk {
+    fn paint(&self, sample: Temperature) -> String {
+        BiHueInk::new(0.96, 0.54, 0.92).paint(if sample.celcius() > 0. {
+            sample.celcius() / Temperature::confine(1.).celcius().abs()
         } else {
-            sample / 6.0
+            sample.celcius() / Temperature::confine(0.).celcius().abs()
         })
     }
 }
-*/
 
 /*
 pub struct KoppenInk;

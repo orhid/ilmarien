@@ -196,6 +196,7 @@ pub fn ball_cone_volume(radius: i32) -> i32 {
 /// a representation of a honeycomb cell in a datum
 pub trait Hexagon {
     fn centre(&self) -> DatumRe;
+    fn uncentre(&self) -> DatumRe;
 
     fn corner(&self, centre: DatumRe, direction: Direction) -> DatumRe {
         let angle = direction.index() as f64 * TAU * 6.0f64.recip();
@@ -214,10 +215,11 @@ pub trait Hexagon {
 
 impl Hexagon for DatumZa {
     fn centre(&self) -> DatumRe {
-        DatumRe {
-            x: self.x as f64 * 1.5,
-            y: self.x as f64 * SQRT3 * 2.0f64.recip() + self.y as f64 * SQRT3,
-        }
+        DatumRe::from(*self).centre()
+    }
+
+    fn uncentre(&self) -> DatumRe {
+        DatumRe::from(*self).uncentre()
     }
 }
 
@@ -226,6 +228,13 @@ impl Hexagon for DatumRe {
         DatumRe {
             x: self.x * 1.5,
             y: self.x * SQRT3 * 2.0f64.recip() + self.y * SQRT3,
+        }
+    }
+
+    fn uncentre(&self) -> DatumRe {
+        DatumRe {
+            x: self.x * 2f64 * 3f64.recip(),
+            y: -self.x * 3f64.recip() + self.y * SQRT3.recip(),
         }
     }
 }

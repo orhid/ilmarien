@@ -15,6 +15,9 @@ use svg::node::element::Path;
 
 // try to replace goe-orient with something and then dump the geo dependency in favour of geo-types
 
+use crate::carto::colour::HueInk;
+use crate::climate::radiation::crve;
+
 /* # geometry to svg */
 
 trait ToSVG {
@@ -131,6 +134,37 @@ impl<T: Clone + Copy> Renderable<T> for Brane<T> {
                 );
             }
         }
+
+        /*
+        // draw solar ellipse
+        let ellipse = Polygon::new(
+            LineString::from(
+                (0..36)
+                    .map(|t| {
+                        let dre = crve(t as f64 / 36.0);
+                        let dza = dre.find(self.resolution);
+                        let tiling: DatumZa = match dza.tile(one) {
+                            Tile::Y => DatumZa::new(0, 0),
+                            Tile::R => DatumZa::new(0, -one),
+                            Tile::B => DatumZa::new(-one, 0),
+                            Tile::G => DatumZa::new(-one, -one),
+                        };
+                        Coordinate::<f64>::from((dza + tiling).centre())
+                    })
+                    .collect::<Vec<Coordinate<f64>>>(),
+            ),
+            vec![],
+        );
+        image = image.add(
+            Path::new()
+                .set("d", poly_to_svg(&ellipse))
+                //.set("fill-rule", "evenodd")
+                .set("fill-opacity", "0.0")
+                .set("stroke", HueInk::new(0.54, 0.32).paint(1.0).as_str()),
+        );
+        // end drawi ellipse
+        */
+
         let path_name = format!("bounce/{}-{}.svg", variable, self.resolution.release());
         svg::save(&path_name, &image).unwrap();
     }

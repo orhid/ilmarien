@@ -6,6 +6,8 @@ use std::{
     ops::{Add, Div, Mul, Neg, Rem, Sub},
 };
 
+const SQRT3: f64 = 1.7320508;
+
 macro_rules! impl_op_internal {
     ($dat:ty, $trait: ident, $op: tt, $method: ident) => {
         impl $trait for $dat {
@@ -165,6 +167,31 @@ impl DatumRe {
             },
         ]
     }
+
+    pub fn tor(self) -> Self {
+        DatumRe {
+            x: self.x.ceil() - self.x,
+            y: self.y.ceil() - self.y,
+        }
+    }
+
+    /// returns distance on the torus, normalised to [0,1] interval
+    pub fn distance(&self, other: &Self) -> f64 {
+        [
+            DatumRe { x: 0., y: 0. },
+            DatumRe { x: 1., y: 0. },
+            DatumRe { x: 0., y: 1. },
+            DatumRe { x: 1., y: 1. },
+        ]
+        .iter()
+        .map(|z| {
+            let d = *z - (*self - *other).tor();
+            (d.x.abs() + d.y.abs() + (d.x + d.y).abs()) * 2f64.recip()
+        })
+        .min_by(|a, b| a.partial_cmp(b).unwrap())
+        .unwrap()
+            * SQRT3.recip()
+    }
 }
 
 #[cfg(test)]
@@ -318,5 +345,19 @@ mod test {
         assert_eq!(DatumZa::enravel(datum.unravel(RES), RES), datum);
         let datum = DatumZa::new(1, 0);
         assert_eq!(DatumZa::enravel(datum.unravel(RES), RES), datum);
+    }
+
+    #[test]
+    fn datum_tor_distance() {
+        let d0 = DatumRe::new(0., 0.);
+        let d1 = DatumRe::new(3f64.recip(), 3f64.recip());
+        let d2 = DatumRe::new(2. * 3f64.recip(), 2. * 3f64.recip());
+        let d3 = DatumRe::new(1., 1.);
+        assert!(d0.distance(&d1) - 1.0 < 0.0001);
+        assert!(d0.distance(&d2) - 1.0 < 0.0001);
+        assert!(d0.distance(&d3) - 0.0 < 0.0001);
+        assert!(d1.distance(&d2) - 1.0 < 0.0001);
+        assert!(d1.distance(&d3) - 1.0 < 0.0001);
+        assert!(d2.distance(&d3) - 1.0 < 0.0001);
     }
 }

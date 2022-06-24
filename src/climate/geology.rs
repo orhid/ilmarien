@@ -83,21 +83,6 @@ pub fn bedrock_elevation(resolution: Resolution, seed: u32) -> Brane<Elevation> 
             &elevation_curve,
         )
     })
-
-    /*
-    Brane::from(
-        (0..resolution.pow(2))
-            .into_par_iter()
-            .map(|j| {
-                bedrock_elevation_at_datum(
-                    &DatumZa::enravel(j, resolution).cast(resolution),
-                    &noise,
-                    &elevation_curve,
-                )
-            })
-            .collect::<Vec<Elevation>>(),
-    )
-    */
 }
 
 pub fn ocean_level(elevation: &Brane<Elevation>) -> Elevation {
@@ -138,7 +123,7 @@ pub fn bedrock_vege(elevation: &Brane<f64>, ocean: f64) -> Brane<Option<Vege>> {
 */
 
 /* # continentality */
-
+/*
 pub fn elevation_above_ocean(elevation: &Brane<Elevation>, ocean: Elevation) -> Brane<Elevation> {
     elevation.operate_by_index(|j| {
         let elevation_here = elevation.grid[j];
@@ -202,6 +187,7 @@ pub fn continentality(elevation: &Brane<Elevation>, ocean: Elevation) -> Brane<f
         None => 1.0,
     })
 }
+*/
 
 /* # erosion */
 
@@ -287,6 +273,7 @@ mod test {
         );
     }
 
+    /*
     #[test]
     fn continentality_values() {
         let brane = continentality(
@@ -297,4 +284,5 @@ mod test {
         assert_float_eq!(brane.grid[5], 1.0, abs <= EPSILON);
         assert_float_eq!(brane.grid[6], 0.0, abs <= EPSILON);
     }
+    */
 }
