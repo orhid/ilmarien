@@ -1,8 +1,9 @@
 use crate::{
-    carto::{brane::Brane, datum::DatumZa, honeycomb::HoneyCellToroidal},
+    carto::{brane::Brane, datum::DatumZa, flux::Flux, honeycomb::HoneyCellToroidal},
     units::{Elevation, Precipitation, Temperature, Unit},
 };
 use log::trace;
+use petgraph::{graph::NodeIndex, visit::EdgeRef, Direction};
 use std::collections::{HashMap, VecDeque};
 
 /* # continentality */
@@ -63,8 +64,6 @@ pub fn continentality(
 
 /// potential amount of water that could be evaporated
 pub fn evapotranspiration_potential(temperature: &Brane<Temperature>) -> Brane<Precipitation> {
-    trace!("calculating potential evapotranspiration");
-
     temperature.operate_by_value_ref(|value| {
         Precipitation::confine(
             (value.celcius().max(0.) * Temperature::celcius_max().recip()).powi(2),
@@ -80,7 +79,6 @@ pub fn rainfall(
     evaporation: &Brane<Precipitation>,
     ocean_tiles: &Brane<bool>,
 ) -> Brane<Precipitation> {
-    trace!("calculating precipitation");
     let resolution = altitude_above_ocean.resolution;
 
     // create storage and prepopulate
@@ -174,6 +172,36 @@ pub fn rainfall(
     }
 
     precipitation.operate_by_value(Option::unwrap)
+}
+
+/* # watershed */
+
+/// calculate the amount of water flowing down to every datum
+pub fn shed(slope: &Flux<Elevation>, rainfall: &Brane<Precipitation>) -> Brane<Precipitation> {
+    fn shed_at_node(
+        node: NodeIndex,
+        shed: &mut Brane<Precipitation>,
+        slope: &Flux<Elevation>,
+        rainfall: &Brane<Precipitation>,
+    ) -> Precipitation {
+        // this has to be a function, not a closure
+        //    sincle closures cannot be called recursively
+        let datum = slope.graph[node];
+        let moisture = rainfall.grid[datum.unravel(slope.resolution)]
+            + slope
+                .graph
+                .edges_directed(node, Direction::Incoming)
+                .map(|edge| shed_at_node(edge.source(), shed, slope, rainfall))
+                .reduce(|a, b| a + b)
+                .unwrap_or(Precipitation::confine(0.));
+        shed.grid[datum.unravel(slope.resolution)] = moisture;
+        moisture
+    }
+    let mut shed = rainfall.operate_by_index(|_| Precipitation::confine(0.));
+    for node in slope.roots.clone() {
+        shed_at_node(node, &mut shed, slope, rainfall);
+    }
+    shed
 }
 
 #[cfg(test)]

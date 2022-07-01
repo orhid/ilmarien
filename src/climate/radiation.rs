@@ -76,7 +76,6 @@ pub fn temperature_at_ocean_level(
     temperature_average: &Brane<Temperature>,
     continentality: &Brane<f64>,
 ) -> Brane<Temperature> {
-    trace!("calculating temperature at ocean level");
     let temperature_value = |insol: f64, insol_avg: f64, cont: f64| -> Temperature {
         Temperature::confine(insol_avg + 4. * cont * (insol_avg - insol))
     };
@@ -100,7 +99,6 @@ pub fn temperature_at_altitude(
     temperature_at_ocean: &Brane<Temperature>,
     altitude_above_ocean: &Brane<Elevation>,
 ) -> Brane<Temperature> {
-    trace!("calculating temperature at altitude");
     let lapse_rate = 144f64.recip(); // fall in temperature for one meter
     let lapse_value = |altitude: Elevation| -> f64 { altitude.meters() as f64 * lapse_rate };
     temperature_at_ocean.operate_by_index(|j| {

@@ -2,20 +2,19 @@ use crate::{
     carto::{
         brane::{Brane, Resolution},
         datum::{DatumRe, DatumZa},
-        //        flux::Flux,
+        flux::Flux,
+        honeycomb::HoneyCellToroidal,
     },
-    //    climate::{hydrology::shed, vegetation::Vege},
-    units::{Elevation, Unit},
+    climate::hydrology::shed,
+    units::{Elevation, Precipitation, Unit},
 };
 use log::trace;
 use noise::{NoiseFn, OpenSimplex, Seedable};
-/*
 use petgraph::{
     graph::{Graph, NodeIndex},
     visit::EdgeRef,
     Direction,
 };
-*/
 use splines::{Interpolation, Key, Spline};
 use std::f64::consts::TAU;
 
@@ -79,7 +78,10 @@ pub fn bedrock_elevation(resolution: Resolution, seed: u32) -> Brane<Elevation> 
     })
 }
 
-pub fn ocean_level(elevation: &Brane<Elevation>) -> Elevation {
+pub fn ocean_level(_elevation: &Brane<Elevation>) -> Elevation {
+    // this is an average from some simulations
+    Elevation::confine(0.2625598904721348)
+    /*
     let mut v = elevation
         .grid
         .iter()
@@ -95,6 +97,7 @@ pub fn ocean_level(elevation: &Brane<Elevation>) -> Elevation {
             .unwrap()
             - 256f64.recip(),
     )
+    */
 }
 
 pub fn ocean_tiles(elevation: &Brane<Elevation>, ocean: Elevation) -> Brane<bool> {
@@ -112,48 +115,72 @@ pub fn altitude_above_ocean_level(
 
 /* # erosion */
 
-/*
-const MAX_RAIN: f64 = 24.0;
 const MAX_DELTA: f64 = 0.1296;
-const BOUNCEBACK: f64 = 0.012;
 
-fn erode_nd(
-    node: NodeIndex,
-    elevation: &mut Brane<f64>,
-    shed: &Brane<f64>,
-    gradient: &Graph<DatumZa, f64>,
+pub fn erode(
+    elevation: &mut Brane<Elevation>,
+    rain: &Brane<Precipitation>,
+    mountain_level: Elevation,
 ) {
-    let alt_here = elevation.read(&gradient[node]);
-    for edge in gradient.edges_directed(node, Direction::Incoming) {
-        let source = edge.source();
-        let child = gradient[source];
-        let rain = shed.read(&child);
-        if rain > 1.0 {
-            elevation.grid[child.unravel(elevation.resolution)] = alt_here
-                + MAX_DELTA.min((elevation.read(&child) - alt_here) * (MAX_RAIN.min(rain)).recip())
-                + BOUNCEBACK;
-        } else {
-            // thermal erosion, could for example tend towards the average of its neighbours if it is
-            // above sea level
-        }
-        erode_nd(source, elevation, shed, gradient);
-    }
-}
-
-const EROSION_LOOP: usize = 1;
-
-pub fn erode(elevation: &mut Brane<f64>, rain: &Brane<f64>) {
     trace!("calculating erosion");
-    for _ in 0..EROSION_LOOP {
-        let slope = Flux::<f64>::from(&elevation.clone());
+
+    fn erode_at_node(
+        node: NodeIndex,
+        elevation: &mut Brane<Elevation>,
+        shed: &Brane<Precipitation>,
+        slope: &Graph<DatumZa, Elevation>,
+        mountain_level: Elevation,
+    ) {
+        let elevation_here = elevation.grid[slope[node].unravel(shed.resolution)];
+        for edge in slope.edges_directed(node, Direction::Incoming) {
+            let source = edge.source();
+            let child = slope[source];
+            let avg = child
+                .ambit_toroidal(elevation.resolution.into())
+                .map(|neighbour| elevation.grid[neighbour.unravel(elevation.resolution)].release())
+                .into_iter()
+                .sum::<f64>()
+                * 6f64.recip();
+            if let Some(elevation_source) =
+                elevation.grid.get_mut(child.unravel(elevation.resolution))
+            {
+                if *elevation_source > mountain_level {
+                    *elevation_source = elevation_here
+                        + Elevation::confine(
+                            MAX_DELTA.min((*elevation_source - elevation_here).release())
+                                * (1.
+                                    - 1f64.min(
+                                        shed.grid[child.unravel(shed.resolution)]
+                                            .release()
+                                            .powf(3f64.recip()), // the root forces more erosion in arid regions
+                                    )),
+                        );
+                    // + Elevation::confine(BOUNCEBACK);
+                } else {
+                    let k = 0.7;
+                    *elevation_source =
+                        Elevation::confine(k * elevation_source.release() + (1. - k) * avg);
+                }
+            }
+            erode_at_node(source, elevation, shed, slope, mountain_level);
+        }
+    }
+
+    for _ in 0..1 {
+        let slope = Flux::<Elevation>::from(elevation.clone());
         let shed = shed(&slope, rain);
-        for node in &slope.roots {
-            erode_nd(*node, elevation, &shed, &slope.graph);
-            elevation.grid[slope.graph[*node].unravel(elevation.resolution)] += BOUNCEBACK;
+        for node in slope.roots.clone() {
+            erode_at_node(node, elevation, &shed, &slope.graph, mountain_level);
+            /*
+            let elevation_here = elevation
+                .grid
+                .get_mut(slope.graph[*node].unravel(elevation.resolution))
+                .expect("index out of bouds");
+            *elevation_here = *elevation_here + Elevation::confine(BOUNCEBACK);
+            */
         }
     }
 }
-*/
 
 #[cfg(test)]
 mod test {
