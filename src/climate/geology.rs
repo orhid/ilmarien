@@ -1,6 +1,6 @@
 use crate::{
     carto::{
-        brane::{Brane, Resolution},
+        brane::Brane,
         datum::{DatumRe, DatumZa},
         flux::Flux,
         honeycomb::HoneyCellToroidal,
@@ -19,43 +19,41 @@ use splines::{Interpolation, Key, Spline};
 use std::f64::consts::TAU;
 
 const SQRT3B2: f64 = 0.8660254;
+const OCNLV: f64 = 0.333333;
 
 /* # bedrock generation */
 
-/// generate a bedrock elevation model from noise
-pub fn bedrock_elevation(resolution: Resolution, seed: u32) -> Brane<Elevation> {
-    trace!("generating bedrock elevation model");
+pub fn bedrock(seed: u32) -> Brane<Elevation> {
+    // load base from file
+    let elevation_base = Brane::<Elevation>::load("elevation-base".to_string()).release();
 
+    // prepeare noise
     let noise = OpenSimplex::new().set_seed(seed);
-    let elevation_curve: Spline<f64, f64> = {
-        // curve moves the mode of the distribution
-        let step = 256f64.recip();
-        let shelf: f64 = 0.27;
-        Spline::from_vec(vec![
-            Key::new(-1., 0., Interpolation::Linear),
-            Key::new(-0.72, shelf - 21.0 * step, Interpolation::Linear),
-            Key::new(-0.15, shelf - 2.0 * step, Interpolation::Linear),
-            Key::new(0.0, shelf, Interpolation::Linear),
-            Key::new(0.03, shelf + 4.0 * step, Interpolation::Linear),
-            Key::new(0.27, shelf + 16.0 * step, Interpolation::Linear),
-            Key::new(1., 1., Interpolation::Linear),
-        ])
-    };
-
+    let amplicies = [
+        2f64.recip(),
+        4f64.recip(),
+        8f64.recip(),
+        12f64.recip(),
+        24f64.recip(),
+        48f64.recip(),
+        96f64.recip(),
+        192f64.recip(),
+    ]
+    .zip([3., 6., 12., 24., 48., 96., 192., 384.]);
     let toroidal_sample = |datum: &DatumRe| -> f64 {
         let fractional_brownian_motion = |x: f64, y: f64| {
-            (0..8)
-                .map(|level| {
-                    let freq = 2f64.powi(level - 1);
-                    1.8f64.powi(-level)
+            amplicies
+                .map(|(amplitude, frequency)| {
+                    amplitude
                         * noise.get([
                             // toroidal wrapping
-                            freq * x.cos(),
-                            freq * x.sin(),
-                            freq * SQRT3B2 * y.cos(), // undistort geometry on the hexagon
-                            freq * SQRT3B2 * y.sin(), // undistort geometry on the hexagon
+                            frequency * x.cos(),
+                            frequency * x.sin(),
+                            frequency * SQRT3B2 * y.cos(), // undistort geometry on the hexagon
+                            frequency * SQRT3B2 * y.sin(), // undistort geometry on the hexagon
                         ])
                 })
+                .iter()
                 .sum::<f64>()
         };
 
@@ -67,12 +65,28 @@ pub fn bedrock_elevation(resolution: Resolution, seed: u32) -> Brane<Elevation> 
         )
     };
 
-    Brane::<Elevation>::create_by_index(resolution, |j| {
+    // prepare curve
+    let elevation_curve: Spline<f64, f64> = {
+        let step = 256f64.recip();
+        Spline::from_vec(vec![
+            Key::new(0., 0., Interpolation::Linear),
+            Key::new(OCNLV - 0.08, OCNLV - 12.0 * step, Interpolation::Linear),
+            Key::new(OCNLV, OCNLV, Interpolation::Linear),
+            Key::new(OCNLV + 0.04, OCNLV + 8.0 * step, Interpolation::Linear),
+            // Key::new(0.03, shelf + 4.0 * step, Interpolation::Linear),
+            // Key::new(0.27, shelf + 16.0 * step, Interpolation::Linear),
+            Key::new(1., 1., Interpolation::Linear),
+        ])
+    };
+
+    elevation_base.operate_by_index(|jndex| {
+        let base = elevation_base.grid[jndex];
+        let noise = toroidal_sample(
+            &DatumZa::enravel(jndex, elevation_base.resolution).cast(elevation_base.resolution),
+        );
         Elevation::confine(
             elevation_curve
-                .clamped_sample(
-                    0.84 * toroidal_sample(&DatumZa::enravel(j, resolution).cast(resolution)),
-                )
+                .clamped_sample(base + noise * (base - OCNLV).abs().powf(0.72).max(0.06))
                 .unwrap(),
         )
     })
@@ -80,7 +94,8 @@ pub fn bedrock_elevation(resolution: Resolution, seed: u32) -> Brane<Elevation> 
 
 pub fn ocean_level(_elevation: &Brane<Elevation>) -> Elevation {
     // this is an average from some simulations
-    Elevation::confine(0.2625598904721348)
+    // Elevation::confine(0.2625598904721348)
+    Elevation::confine(OCNLV)
     /*
     let mut v = elevation
         .grid
@@ -184,11 +199,12 @@ pub fn erode(
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use float_eq::{assert_float_eq, assert_float_ne};
-    const EPSILON: f64 = 0.0000_01;
-    const RES: Resolution = Resolution::confine(6);
+    // use super::*;
+    // use float_eq::{assert_float_eq, assert_float_ne};
+    // const EPSILON: f64 = 0.0000_01;
+    // const RES: Resolution = Resolution::confine(6);
 
+    /*
     #[test]
     fn bedrock_elevation_values() {
         let brane = bedrock_elevation(RES, 0);
@@ -201,4 +217,5 @@ mod test {
         assert_float_ne!(brane.grid[8].release(), 0.273077, abs <= EPSILON);
         assert_float_ne!(brane.grid[24].release(), 0.285910, abs <= EPSILON);
     }
+    */
 }

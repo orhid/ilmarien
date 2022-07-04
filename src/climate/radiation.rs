@@ -13,9 +13,9 @@ use std::f64::consts::TAU;
 
 pub fn crve(t: f64) -> DatumRe {
     //TODO: hide this into insolation, once we are not rendering this
-    let eccentricity: f64 = 2f64.recip();
-    let radius_major: f64 = 3f64.recip();
-    let angle: f64 = -TAU * 6f64.recip();
+    let eccentricity: f64 = 0.64;
+    let radius_major: f64 = 0.36;
+    let angle: f64 = -TAU * -5f64.recip();
 
     let linear = eccentricity * radius_major;
     let radius_minor = (radius_major.powi(2) - linear.powi(2)).sqrt();

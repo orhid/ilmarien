@@ -9,73 +9,62 @@ use log::info;
 use std::thread;
 
 #[allow(dead_code)]
-fn gen_terrain(res: Resolution, seed: u32) {
-    use ilmarien::climate::geology::bedrock_elevation;
+fn gen_terrain(seed: u32) {
+    use ilmarien::climate::geology::bedrock;
 
-    let altitude = bedrock_elevation(res, seed);
-    let variable = format!("{}-alt", seed);
-    // altitude.stats();
-    // altitude.save(variable.clone());
-    altitude.render(variable, clr::TopographyInk::new(ocean_level(&altitude)));
+    let elevation = bedrock(seed);
+    let variable = "elevation-noised".to_string();
+    // elevation.stats();
+    elevation.save(variable.clone());
+    // let elevation = elevation.upscale(Resolution::confine(1080));
+    // elevation.render(variable, clr::TopographyInk::new(ocean_level(&elevation)));
 }
 
 #[allow(dead_code)]
-fn run_once(res: Resolution, seed: u32) {
+fn run_once() {
     use ilmarien::climate::simulation::Cosmos;
-    let cosmos = Cosmos::simulate(res, seed);
+    let cosmos = Cosmos::simulate();
 
-    let altitude = cosmos.altitude.clone();
-    altitude.render(
-        format!("{}-alt", seed),
-        clr::TopographyInk::new(ocean_level(&cosmos.altitude)),
+    let elevation = cosmos.altitude.downgrade(6);
+    elevation.render(
+        "elevation".to_string(),
+        clr::TopographyInk::new(ocean_level(&elevation)),
     );
     /*
-    let aridity = cosmos.charts.operate_by_value_ref(|chart| chart.aridity());
-    aridity.render(format!("{}-aridity", seed), clr::HueInk::new(0.12, 0.92));
-    let vege = cosmos.vege();
-    vege.render(format!("{}-vege", seed), clr::KoppenInk);
+    elevation.render_triple(
+        "elevation".to_string(),
+        clr::TopographyInk::new(ocean_level(&elevation)),
+    );
     */
-    info!("finished simulation at {}", seed);
-}
-
-#[allow(dead_code)]
-fn measure(res: Resolution) {
-    use ilmarien::climate::geology::bedrock_elevation;
-
-    let (j, k) = (3, 7);
-    let olvs = (0..108)
-        .map(|s| j * s + k)
-        .map(|s| ocean_level(&bedrock_elevation(res, s)).release())
-        .collect::<Vec<f64>>();
-    println!("{}", olvs.iter().sum::<f64>() / olvs.len() as f64);
+    let aridity = cosmos
+        .charts
+        .operate_by_value_ref(|chart| chart.aridity())
+        .downgrade(6);
+    aridity.render("aridity".to_string(), clr::HueInk::new(0.12, 0.92));
+    let vege = cosmos.vege().downgrade(6);
+    vege.render("vege".to_string(), clr::KoppenInk);
+    info!("finished simulation");
 }
 
 #[allow(dead_code)]
 fn run_many() {
-    let res: Resolution = Resolution::confine(216);
+    // let res: Resolution = Resolution::confine(216);
 
     // make a vector to hold the children which are spawned
     let mut children = vec![];
 
     /*
-    let (j, k) = (13, 17);
+    let (j, k) = (279, 461);
     let count = 36;
     for s in 0..count {
         let seed = j * s + k;
+        */
+    for seed in [4088, 6320, 41069] {
         // spin up another thread
         children.push(thread::spawn(move || {
-            gen_terrain(res, seed);
+            gen_terrain(seed);
         }));
     }
-    */
-    let seeds = [7, 30, 31, 46, 64, 69, 121, 193, 214, 381];
-    for seed in seeds {
-        // spin up another thread
-        children.push(thread::spawn(move || {
-            gen_terrain(res, seed);
-        }));
-    }
-
     for child in children {
         // wait for the thread to finish
         let _ = child.join();
@@ -85,8 +74,10 @@ fn run_many() {
 fn main() {
     pretty_env_logger::init_timed();
     info!("initialising ilmarien");
-    //gen_terrain(Resolution::confine(324), 0);
+    //gen_terrain(41069);
+    run_once();
     //measure(Resolution::confine(324));
-    run_many();
+    // run_many();
+    // test();
     info!("computation completed")
 }

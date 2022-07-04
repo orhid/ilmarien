@@ -68,11 +68,9 @@ pub trait Renderable<T> {
     where
         S: Ink<T>;
 
-    /*
-    fn render_triple<T>(&self, variable: String, ink: T)
+    fn render_triple<S>(&self, variable: String, ink: S)
     where
-        T: Ink;
-    */
+        S: Ink<T>;
 }
 
 /// performs a union on a queue of polygons
@@ -132,7 +130,6 @@ impl<T: Clone + Copy> Renderable<T> for Brane<T> {
             }
         }
 
-        /*
         // draw solar ellipse
         use crate::carto::colour::HueInk;
         use crate::climate::radiation::crve;
@@ -163,55 +160,82 @@ impl<T: Clone + Copy> Renderable<T> for Brane<T> {
                 .set("stroke", HueInk::new(0.54, 0.32).paint(1.0).as_str()),
         );
         // end drawi ellipse
-        */
 
         let path_name = format!("bounce/{}-{}.svg", variable, self.resolution.release());
         svg::save(&path_name, &image).unwrap();
     }
 
-    /*
-    fn render_triple<T>(&self, ink: T)
+    fn render_triple<S>(&self, variable: String, ink: S)
     where
-        T: Ink,
+        S: Ink<T>,
     {
-        let one: i32 = self.resolution as i32;
+        trace!("rendering brane {}", variable);
+        let one: i32 = self.resolution.into();
+        let mut terraces = HashMap::new();
+        for datum in (0..self.resolution.square()).map(|j| DatumZa::enravel(j, self.resolution)) {
+            let tiling = match datum.tile(one) {
+                Tile::Y => vec![
+                    DatumZa::new(0, 0),
+                    DatumZa::new(one, 0),
+                    DatumZa::new(0, one),
+                ],
+                Tile::R => vec![
+                    DatumZa::new(0, -one),
+                    DatumZa::new(0, 0),
+                    DatumZa::new(one, -one),
+                ],
+                Tile::B => vec![
+                    DatumZa::new(-one, 0),
+                    DatumZa::new(0, 0),
+                    DatumZa::new(-one, one),
+                ],
+                Tile::G => vec![
+                    DatumZa::new(-one, -one),
+                    DatumZa::new(-one, 0),
+                    DatumZa::new(0, -one),
+                ],
+            };
+            for tile in tiling {
+                terraces
+                    .entry(ink.paint(self.grid[datum.unravel(self.resolution)]))
+                    .or_insert_with(VecDeque::<MultiPolygon<f64>>::new)
+                    .push_back(MultiPolygon::from(vec![Polygon::new(
+                        LineString::from(
+                            (datum + tile)
+                                .corners()
+                                .iter()
+                                .map(|corner| Coordinate::<f64>::from(*corner))
+                                .collect::<Vec<Coordinate<f64>>>(),
+                        ),
+                        vec![],
+                    )]));
+            }
+        }
+
         let mut image = svg::Document::new().set(
             "viewBox",
             (-one as f32 * 1.25, -one as f32 * 1.125, 4 * one, 4 * one),
         );
-        for point in self {
-            let tiling = match point.tile(self.resolution as i32) {
-                Tile::Y => vec![
-                    Coordinate { x: 0, y: 0 },
-                    Coordinate { x: one, y: 0 },
-                    Coordinate { x: 0, y: one },
-                ],
-                Tile::R => vec![
-                    Coordinate { x: 0, y: -one },
-                    Coordinate { x: 0, y: 0 },
-                    Coordinate { x: one, y: -one },
-                ],
-                Tile::B => vec![
-                    Coordinate { x: -one, y: 0 },
-                    Coordinate { x: 0, y: 0 },
-                    Coordinate { x: -one, y: one },
-                ],
-                Tile::G => vec![
-                    Coordinate { x: -one, y: -one },
-                    Coordinate { x: -one, y: 0 },
-                    Coordinate { x: 0, y: -one },
-                ],
-            };
-            for tile in tiling {
-                let hexagon =
-                    svg_hexagon((point + tile).corners()).set("fill", ink.paint(self.get(&point)));
-                image = image.add(hexagon);
+        for (paint, terrace) in terraces {
+            let multigon = cascade(terrace);
+            for polygon in multigon {
+                // orienting should be done in union function and only for polygons with interiors
+                // others will work fine even if they are in the wrong orientation
+                // this might fuck with areas later though, so maybe orient all
+                image = image.add(
+                    polygon
+                        .orient(Direction::Default)
+                        .svg()
+                        .set("fill", paint.as_str()),
+                );
             }
         }
-        let path_name = format!("bounce/{}-{}-tri.svg", self.variable, self.resolution);
+
+        let path_name = format!(
+            "bounce/{}-{}-triple.svg",
+            variable,
+            self.resolution.release()
+        );
         svg::save(&path_name, &image).unwrap();
     }
-    */
 }
-
-// TODO: this should betested when it is more complete

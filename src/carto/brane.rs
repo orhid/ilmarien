@@ -113,6 +113,17 @@ impl<T: Send> Brane<T> {
     {
         Brane::new(self.grid.iter().map(f).collect::<Vec<S>>(), self.resolution)
     }
+
+    pub fn downgrade(&self, factor: usize) -> Self
+    where
+        T: Copy + Sync + Send,
+    {
+        let res = self.resolution.release();
+        Brane::create_by_index(Resolution::confine(res / factor), |jndex| {
+            let kndex = jndex * factor;
+            self.grid[kndex + (kndex / res) * res * (factor - 1)]
+        })
+    }
 }
 
 impl From<Brane<f64>> for Brane<u16> {
@@ -130,7 +141,7 @@ impl From<Brane<u16>> for Brane<f64> {
 impl Brane<u16> {
     /// save brane to a .tif file
     fn save_raw(&self, variable: String) {
-        let path_name = format!("static/{}-u16-{}.tif", variable, self.resolution.release());
+        let path_name = format!("static/{}-u16-{}.tiff", variable, self.resolution.release());
         trace!("saving brane to {}", path_name);
         TiffEncoder::new(&mut fs::File::create(&Path::new(&path_name)).unwrap())
             .unwrap()
@@ -161,7 +172,12 @@ impl Brane<u16> {
             let mut resolutions = files
                 .iter()
                 .map(|file| {
-                    file[varextended.len() + 1..file.len() - 4]
+                    file.split_once('.')
+                        .expect("file should have one extension")
+                        .0
+                        .rsplit_once('-')
+                        .expect("last part should be resolution")
+                        .1
                         .parse::<usize>()
                         .expect("variable contains something weird")
                 })
@@ -174,7 +190,7 @@ impl Brane<u16> {
             )
         };
 
-        let path_name = format!("static/{}-{}.tif", varextended, resolution.release());
+        let path_name = format!("static/{}-{}.tiff", varextended, resolution.release());
         trace!("loading brane from {}", path_name);
         let mut file = fs::File::open(&Path::new(&path_name)).unwrap();
         let mut tiff = Decoder::new(&mut file).unwrap();
@@ -409,7 +425,7 @@ mod test {
     fn brane_save_load() {
         let brane = Brane::<u16>::new(vec![0, 16384, 32768, 65535], Resolution::confine(2));
         brane.save_raw("test-write-rawu16".to_string());
-        assert!(Path::new("static/test-write-rawu16-u16-2.tif").exists());
+        assert!(Path::new("static/test-write-rawu16-u16-2.tiff").exists());
         assert_eq!(
             Brane::<u16>::load_raw("test-write-rawu16".to_string()).grid,
             brane.grid
@@ -436,7 +452,7 @@ mod test {
             Resolution::confine(2),
         );
         brane.save("test-write-elevation".to_string());
-        assert!(Path::new("static/test-write-elevation-u16-2.tif").exists());
+        assert!(Path::new("static/test-write-elevation-u16-2.tiff").exists());
         assert_float_eq!(
             Brane::<Elevation>::load("test-write-elevation".to_string())
                 .release()
@@ -445,9 +461,9 @@ mod test {
             rmax <= vec![EPSILON; 4]
         );
 
-        fs::remove_file("static/test-write-rawu16-u16-2.tif").expect("test failed");
+        fs::remove_file("static/test-write-rawu16-u16-2.tiff").expect("test failed");
         //fs::remove_file("static/test-write-rawf64-u16-2.tif").expect("test failed");
-        fs::remove_file("static/test-write-elevation-u16-2.tif").expect("test failed");
+        fs::remove_file("static/test-write-elevation-u16-2.tiff").expect("test failed");
     }
 
     #[test]
