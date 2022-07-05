@@ -1,7 +1,7 @@
-#![feature(slice_group_by)]
-#![feature(associated_type_bounds)]
 #![feature(array_zip)]
+#![feature(exclusive_range_pattern)]
 
 pub mod carto;
 pub mod climate;
+pub mod regression;
 pub mod units;

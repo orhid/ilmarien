@@ -83,7 +83,7 @@ impl Temperature {
     }
 
     pub const fn celcius_min() -> f64 {
-        -36.
+        -27.
     }
 
     pub fn celcius_max() -> f64 {
@@ -107,8 +107,8 @@ impl Temperature {
 impl_unit!(Precipitation, f64);
 
 impl Precipitation {
-    pub fn milimeters(self) -> i32 {
-        (self.0 * 1.) as i32
+    pub fn milimeters(self) -> u16 {
+        (self.0 * 324.).max(0.) as u16
     }
 }
 

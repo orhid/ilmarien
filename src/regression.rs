@@ -48,10 +48,7 @@ fn coordinates(altitude: &Brane<Elevation>) -> DMatrix<f64> {
         xsin,
         ycos,
         ysin,
-        DVector::<f64>::from_iterator(
-            resolution.square(),
-            altitude.release().grid.clone().into_iter(),
-        ),
+        DVector::<f64>::from_iterator(resolution.square(), altitude.release().grid.into_iter()),
     ])
 }
 
@@ -64,7 +61,6 @@ fn lin_reg(x_train: &DMatrix<f64>, y_train: &DVector<f64>, x_test: &DMatrix<f64>
         .qr();
     let (q, r) = (qr.q().transpose(), qr.r());
     let coeff = r.try_inverse().unwrap() * &q * y_train;
-    //println!("{}", coeff.clone());
     let mul = coeff.rows(0, columns);
     let intercept = coeff[(columns, 0)];
 
@@ -100,7 +96,7 @@ pub fn predict_brane(
         ),
     );
 
-    // # predict temperature
+    // # predict
     let brane_smol_dv = DVector::<f64>::from_iterator(
         altitude_smol.resolution.square(),
         brane_smol.grid.clone().into_iter(),
@@ -108,11 +104,7 @@ pub fn predict_brane(
     let brane_dv = lin_reg(&a_smol, &brane_smol_dv, &a);
 
     Brane::new(
-        brane_dv
-            .into_iter()
-            .map(|v| *v)
-            //.map(|v| 1f64.min(0f64.max(*v)))
-            .collect::<Vec<f64>>(),
+        brane_dv.into_iter().copied().collect::<Vec<f64>>(),
         altitude.resolution,
     )
 }

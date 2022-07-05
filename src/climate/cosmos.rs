@@ -1,15 +1,17 @@
 #[allow(unused_imports)]
-//use crate::carto::{colour as clr, render::Renderable};
+use crate::carto::{colour as clr, render::Renderable};
 use crate::{
     carto::brane::{Brane, Resolution},
     climate::{
         chart::{Chart, Zone},
-        geology::{altitude_above_ocean_level, bedrock, erode, ocean_level, ocean_tiles},
-        hydrology::{continentality, evapotranspiration_potential, rainfall},
-        radiation::{temperature_at_altitude, temperature_at_ocean_level, temperature_average},
-        regression::predict_brane,
+        circulation::{
+            altitude_above_ocean_level, continentality, evapotranspiration_potential, ocean_tiles,
+            rainfall, temperature_at_altitude, temperature_at_ocean_level, temperature_average,
+            OCNLV,
+        },
         vegetation::Vege,
     },
+    regression::predict_brane,
     units::{Elevation, Precipitation, Temperature, Unit},
 };
 use log::trace;
@@ -52,6 +54,21 @@ impl Month {
             evapotranspiration_potential(&temperature),
         )
     }
+
+    pub fn render(&self) {
+        self.temp.stats();
+        self.temp
+            .upscale(Resolution::confine(324))
+            .render("temp".to_string(), clr::CelciusInk);
+        self.rain.stats();
+        self.rain
+            .upscale(Resolution::confine(324))
+            .render("rain".to_string(), clr::MoonMeterInk);
+        self.pevt.stats();
+        self.pevt
+            .upscale(Resolution::confine(324))
+            .render("pevt".to_string(), clr::MoonMeterInk);
+    }
 }
 
 fn simulate_month(
@@ -63,16 +80,17 @@ fn simulate_month(
 ) -> Month {
     let temperature = temperature_at_altitude(
         &temperature_at_ocean_level(solar_time, temperature_average, continentality),
-        &altitude,
+        altitude,
     );
     let evaporation_potential = evapotranspiration_potential(&temperature);
     Month::new(
         temperature.clone(),
         rainfall(
-            &altitude,
+            altitude,
             &temperature,
             &evaporation_potential,
-            &ocean_tiles,
+            continentality,
+            ocean_tiles,
         ),
         evaporation_potential,
     )
@@ -94,7 +112,7 @@ impl Cosmos {
     pub fn simulate() -> Self {
         let elevation = Brane::<Elevation>::load("elevation".to_string()).downgrade(4);
         let resolution = elevation.resolution;
-        let ocean_lv = ocean_level(&elevation);
+        let ocean_lv = Elevation::confine(OCNLV);
 
         // # establish small branes
         let resolution_small = Resolution::confine(216); // mostly for rainfall
@@ -107,27 +125,27 @@ impl Cosmos {
             &temperature_average_small,
             &ocean_tiles_small,
         );
+        // continentality_small.stats_raw();
+        // continentality_small.render("cont".to_string(), clr::HueInk::new(0.08, 0.92));
 
         // # small run
         trace!("simulating atmospheric condidtions");
-        let year_small = (0..18)
-            .map(|sol| {
-                simulate_month(
-                    sol as f64 / 18.,
-                    &altitude_small,
-                    &continentality_small,
-                    &temperature_average_small,
-                    &ocean_tiles_small,
-                )
-            })
-            .collect::<Vec<Month>>();
+        let year_len = 18;
+        let year_small = (0..year_len).map(|sol| {
+            simulate_month(
+                sol as f64 / year_len as f64,
+                &altitude_small,
+                &continentality_small,
+                &temperature_average_small,
+                &ocean_tiles_small,
+            )
+        });
 
         // # upscale
         trace!("upscaling results");
         let altitude = altitude_above_ocean_level(&elevation, ocean_lv);
         let continentality = continentality_small.upscale_raw(resolution);
         let year = year_small
-            .into_iter()
             .map(|month| {
                 month.upscale(
                     &altitude_small,
@@ -137,6 +155,8 @@ impl Cosmos {
                 )
             })
             .collect::<Vec<Month>>();
+
+        year[9].render();
 
         Self::new(
             elevation,
@@ -157,8 +177,9 @@ impl Cosmos {
     }
 
     pub fn vege(&self) -> Brane<Option<Vege>> {
-        let olv = ocean_level(&self.altitude);
-        let ocean_tiles = self.altitude.operate_by_value_ref(|value| value < &olv);
+        let ocean_tiles = self
+            .altitude
+            .operate_by_value_ref(|value| value.release() < OCNLV);
         self.charts.operate_by_index(|j| {
             if ocean_tiles.grid[j] {
                 None

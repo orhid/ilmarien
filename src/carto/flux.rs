@@ -28,16 +28,15 @@ impl<T: Copy + PartialOrd + Sub<Output = T>> From<Brane<T>> for Flux<T> {
 
         for jndex in 0..brane.resolution.square() {
             let datum = DatumZa::enravel(jndex, brane.resolution);
-            let targets = datum
+            match datum
                 .ambit_toroidal(brane.resolution.into())
                 .into_iter()
                 .filter(|source| brane.grid[source.unravel(brane.resolution)] < brane.grid[jndex])
-                .collect::<Vec<DatumZa>>();
-            match targets.into_iter().min_by(|a, b| {
-                brane.grid[a.unravel(brane.resolution)]
-                    .partial_cmp(&brane.grid[b.unravel(brane.resolution)])
-                    .unwrap()
-            }) {
+                .min_by(|a, b| {
+                    brane.grid[a.unravel(brane.resolution)]
+                        .partial_cmp(&brane.grid[b.unravel(brane.resolution)])
+                        .unwrap()
+                }) {
                 Some(target) => {
                     let _ = graph.add_edge(
                         nodes[&datum],

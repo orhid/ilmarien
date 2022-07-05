@@ -6,8 +6,6 @@ use std::{
     ops::{Add, Div, Mul, Neg, Rem, Sub},
 };
 
-const SQRT3: f64 = 1.7320508;
-
 macro_rules! impl_op_internal {
     ($dat:ty, $trait: ident, $op: tt, $method: ident) => {
         impl $trait for $dat {
@@ -190,13 +188,15 @@ impl DatumRe {
         })
         .min_by(|a, b| a.partial_cmp(b).unwrap())
         .unwrap()
-            * SQRT3.recip()
+            * 1.5
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use float_eq::assert_float_eq;
+    const EPSILON: f64 = 0.0001;
 
     /* # data */
 
@@ -353,11 +353,11 @@ mod test {
         let d1 = DatumRe::new(3f64.recip(), 3f64.recip());
         let d2 = DatumRe::new(2. * 3f64.recip(), 2. * 3f64.recip());
         let d3 = DatumRe::new(1., 1.);
-        assert!(d0.distance(&d1) - 1.0 < 0.0001);
-        assert!(d0.distance(&d2) - 1.0 < 0.0001);
-        assert!(d0.distance(&d3) - 0.0 < 0.0001);
-        assert!(d1.distance(&d2) - 1.0 < 0.0001);
-        assert!(d1.distance(&d3) - 1.0 < 0.0001);
-        assert!(d2.distance(&d3) - 1.0 < 0.0001);
+        assert_float_eq!(d0.distance(&d1), 1.0, abs <= EPSILON);
+        assert_float_eq!(d0.distance(&d2), 1.0, abs <= EPSILON);
+        assert_float_eq!(d0.distance(&d3), 0.0, abs <= EPSILON);
+        assert_float_eq!(d1.distance(&d2), 1.0, abs <= EPSILON);
+        assert_float_eq!(d1.distance(&d3), 1.0, abs <= EPSILON);
+        assert_float_eq!(d2.distance(&d3), 1.0, abs <= EPSILON);
     }
 }

@@ -173,16 +173,6 @@ impl Ink<Elevation> for TopographyInk {
 
 /* ### temperature */
 
-/*
-pub struct TemperatureInk;
-
-impl Ink<f64> for TemperatureInk {
-    fn paint(&self, sample: f64) -> String {
-        BiHueInk::new(0.96, 0.54, 0.92).paint(sample.mul_add(1.0, -0.3))
-    }
-}
-*/
-
 use crate::units::Temperature;
 
 pub struct CelciusInk;
@@ -196,6 +186,31 @@ impl Ink<Temperature> for CelciusInk {
         })
     }
 }
+
+/* ### precipitation */
+
+use crate::units::Precipitation;
+
+// mililiters per month, roughly
+pub struct MoonMeterInk;
+
+impl Ink<Precipitation> for MoonMeterInk {
+    fn paint(&self, sample: Precipitation) -> String {
+        let mms = sample.milimeters();
+        match mms {
+            0 => HSB::new(0., 0.84, 0.92).paint(),
+            1..12 => HSB::new(0.12, 0.84, 0.92).paint(),
+            12..24 => HSB::new(0.24, 0.84, 0.92).paint(),
+            24..48 => HSB::new(0.36, 0.84, 0.92).paint(),
+            48..96 => HSB::new(0.48, 0.84, 0.92).paint(),
+            96..192 => HSB::new(0.54, 0.84, 0.92).paint(),
+            192..384 => HSB::new(0.60, 0.84, 0.92).paint(),
+            _ => HSB::new(0.66, 0.84, 0.92).paint(),
+        }
+    }
+}
+
+/* ### zones */
 
 pub struct KoppenInk;
 
