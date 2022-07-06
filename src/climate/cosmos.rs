@@ -9,7 +9,7 @@ use crate::{
             rainfall, temperature_at_altitude, temperature_at_ocean_level, temperature_average,
             OCNLV,
         },
-        vegetation::Vege,
+        vegetation::{Vege, ZoneType},
     },
     regression::predict_brane,
     units::{Elevation, Precipitation, Temperature, Unit},
@@ -110,7 +110,7 @@ impl Cosmos {
     }
 
     pub fn simulate() -> Self {
-        let elevation = Brane::<Elevation>::load("elevation".to_string()).downgrade(4);
+        let elevation = Brane::<Elevation>::load("elevation".to_string()).downgrade(3);
         let resolution = elevation.resolution;
         let ocean_lv = Elevation::confine(OCNLV);
 
@@ -130,7 +130,7 @@ impl Cosmos {
 
         // # small run
         trace!("simulating atmospheric condidtions");
-        let year_len = 18;
+        let year_len = 24;
         let year_small = (0..year_len).map(|sol| {
             simulate_month(
                 sol as f64 / year_len as f64,
@@ -142,7 +142,6 @@ impl Cosmos {
         });
 
         // # upscale
-        trace!("upscaling results");
         let altitude = altitude_above_ocean_level(&elevation, ocean_lv);
         let continentality = continentality_small.upscale_raw(resolution);
         let year = year_small
@@ -156,7 +155,7 @@ impl Cosmos {
             })
             .collect::<Vec<Month>>();
 
-        year[9].render();
+        //year[0].render();
 
         Self::new(
             elevation,
@@ -184,7 +183,7 @@ impl Cosmos {
             if ocean_tiles.grid[j] {
                 None
             } else {
-                Some(Vege::from(&Zone::from(&self.charts.grid[j])))
+                Some(Vege::from(ZoneType::from(Zone::from(&self.charts.grid[j]))))
             }
         })
     }

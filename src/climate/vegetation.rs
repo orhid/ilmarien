@@ -1,6 +1,57 @@
 use crate::climate::chart::Zone;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Thermo {
+    Hot,
+    Warm,
+    Brisk,
+    Cold,
+    Frigid,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Igro {
+    Jungle,
+    Forest,
+    Meadow,
+    Desert,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Parallaxo {
+    Barline,
+    Balanced,
+    Olivine,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ZoneType(Thermo, Igro, Parallaxo);
+
+impl From<Zone> for ZoneType {
+    fn from(zone: Zone) -> Self {
+        let thermos = match zone.thermos.celcius() {
+            t if (30.0..f64::INFINITY).contains(&t) => Thermo::Hot,
+            t if (21.0..30.).contains(&t) => Thermo::Warm,
+            t if (12.0..21.).contains(&t) => Thermo::Brisk,
+            t if (-2.0..12.).contains(&t) => Thermo::Cold,
+            _ => Thermo::Frigid,
+        };
+        let igros = match zone.igros {
+            i if (-0.03..f64::INFINITY).contains(&i) => Igro::Jungle,
+            i if (-0.24..-0.03).contains(&i) => Igro::Forest,
+            i if (-0.48..-0.24).contains(&i) => Igro::Meadow,
+            _ => Igro::Desert,
+        };
+        let parallaxos = match zone.parallaxos {
+            p if (0.12..f64::INFINITY).contains(&p) => Parallaxo::Barline,
+            p if (-0.06..0.12).contains(&p) => Parallaxo::Balanced,
+            _ => Parallaxo::Olivine,
+        };
+        Self(thermos, igros, parallaxos)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Vege {
     Stone,
     Frost,
@@ -17,48 +68,6 @@ pub enum Vege {
 }
 
 /*
-impl Vege {
-    pub fn array() -> Vec<Self> {
-        vec![
-            Vege::Stone,
-            Vege::Frost,
-            Vege::Tundra,
-            Vege::Prairie,
-            Vege::Savanna,
-            Vege::Sand,
-            Vege::Shrub,
-            Vege::Taiga,
-            Vege::Coniferous,
-            Vege::Decideous,
-            Vege::Monsoon,
-            Vege::Broadleaf,
-        ]
-    }
-}
-*/
-
-/*
-/// amount of water that could be evaporated
-pub fn hydro_potential(cell: Option<Vege>) -> f64 {
-    match cell {
-        Some(vege) => match vege {
-            Vege::Frost => 0.12,
-            Vege::Stone => 0.02,
-            Vege::Tundra => 0.18,
-            Vege::Prairie => 0.18,
-            Vege::Savanna => 0.18,
-            Vege::Sand => 0.01,
-            Vege::Shrub => 0.12,
-            Vege::Taiga => 0.42,
-            Vege::Coniferous => 0.54,
-            Vege::Decideous => 0.84,
-            Vege::Monsoon => 0.96,
-            Vege::Broadleaf => 1.0,
-        },
-        None => 0.84,
-    }
-}
-
 /// how many people can this zone sustain
 pub fn habitability(cell: Option<Vege>) -> f64 {
     match cell {
@@ -81,101 +90,37 @@ pub fn habitability(cell: Option<Vege>) -> f64 {
 }
 */
 
-const ARID_FACTOR: f64 = 0.72;
+impl From<ZoneType> for Vege {
+    fn from(zone: ZoneType) -> Self {
+        match (zone.0, zone.1, zone.2) {
+            (Thermo::Frigid, Igro::Desert, _) => Vege::Stone,
+            (Thermo::Frigid, _, _) => Vege::Frost,
 
-/*
-impl From<&Vege> for Zone {
-    fn from(vege: &Vege) -> Self {
-        match vege {
-            Vege::Stone => Self::new(1.08 * ARID_FACTOR, 0.0, -3.0, 12.0),
-            Vege::Sand => Self::new(0.96 * ARID_FACTOR, 0.0, 27.0, 36.0),
+            (Thermo::Cold, Igro::Desert, _) => Vege::Stone,
+            (Thermo::Cold, Igro::Meadow, _) => Vege::Tundra,
+            (Thermo::Cold, Igro::Forest, _) => Vege::Coniferous,
+            (Thermo::Cold, Igro::Jungle, _) => Vege::Taiga,
 
-            Vege::Frost => Self::new(0.42 * ARID_FACTOR, 0.0, -6.0, -6.0),
-            Vege::Tundra => Self::new(0.54 * ARID_FACTOR, 0.0, -3.0, 12.0),
-            Vege::Prairie => Self::new(0.72 * ARID_FACTOR, -0.24, 3.0, 18.0),
-            Vege::Shrub => Self::new(0.54 * ARID_FACTOR, -0.48, 12.0, 24.0),
-            Vege::Savanna => Self::new(0.42 * ARID_FACTOR, 0.0, 24.0, 36.0),
+            (Thermo::Brisk, Igro::Desert, _) => Vege::Sand,
+            (Thermo::Brisk, Igro::Meadow, Parallaxo::Barline) => Vege::Tundra,
+            (Thermo::Brisk, Igro::Meadow, _) => Vege::Prairie,
+            (Thermo::Brisk, Igro::Forest, Parallaxo::Barline) => Vege::Decideous,
+            (Thermo::Brisk, Igro::Forest, _) => Vege::Coniferous,
+            (Thermo::Brisk, Igro::Jungle, _) => Vege::Decideous,
 
-            Vege::Monsoon => Self::new(0.24 * ARID_FACTOR, 0.54, 18.0, 36.0),
-            Vege::Taiga => Self::new(0.12 * ARID_FACTOR, 0.24, 0.0, 12.0),
-            Vege::Coniferous => Self::new(0.12 * ARID_FACTOR, 0.12, 3.0, 18.0),
-            Vege::Decideous => Self::new(0.12 * ARID_FACTOR, 0.0, 12.0, 24.0),
-            Vege::Broadleaf => Self::new(0.0 * ARID_FACTOR, 0.0, 24.0, 24.0),
-        }
-    }
-}
-*/
+            (Thermo::Warm, Igro::Desert, _) => Vege::Sand,
+            (Thermo::Warm, Igro::Meadow, Parallaxo::Olivine) => Vege::Shrub,
+            (Thermo::Warm, Igro::Meadow, _) => Vege::Prairie,
+            (Thermo::Warm, Igro::Forest, _) => Vege::Decideous,
+            (Thermo::Warm, Igro::Jungle, Parallaxo::Balanced) => Vege::Broadleaf,
+            (Thermo::Warm, Igro::Jungle, _) => Vege::Monsoon,
 
-impl From<&Zone> for Vege {
-    fn from(zone: &Zone) -> Self {
-        if zone.is_nan() {
-            Self::Stone
-        } else {
-            match zone.aridity {
-                a if a > 1.44 * ARID_FACTOR => {
-                    if zone.tmax.celcius() < 0. {
-                        Vege::Frost
-                    } else if zone.tmin.celcius() > 18. {
-                        Vege::Broadleaf // rainforest
-                    } else if 3. * zone.tmin.celcius() + zone.tmax.celcius()
-                        - 12. * zone.swing
-                        - 36.
-                        < 0.
-                    {
-                        Vege::Taiga // coniferous but wetter
-                    } else {
-                        Vege::Monsoon //decidous but wetter
-                    }
-                }
-                a if a > 0.72 * ARID_FACTOR => {
-                    if zone.tmax.celcius() < 0. {
-                        Vege::Frost
-                    } else if zone.tmin.celcius() > 24. {
-                        Vege::Shrub
-                    } else if 9. * zone.tmin.celcius() + zone.tmax.celcius()
-                        - 36. * zone.swing
-                        - 60.
-                        < 0.
-                    {
-                        Vege::Coniferous
-                    } else {
-                        Vege::Decideous
-                    }
-                }
-                a if a > 0.36 * ARID_FACTOR => {
-                    if zone.tmax.celcius() < 0. {
-                        Vege::Frost
-                    } else if zone.tmin.celcius() > 18. {
-                        Vege::Savanna
-                    } else if zone.tmin.celcius() + zone.tmax.celcius() - 6. * zone.swing - 30. > 0.
-                    {
-                        Vege::Shrub
-                    } else if 5. * zone.tmin.celcius() + 3. * zone.tmax.celcius() + 24. * zone.swing
-                        - 24.
-                        < 0.
-                    {
-                        Vege::Tundra
-                    } else {
-                        Vege::Prairie
-                    }
-                }
-                a if a > 0.6 * ARID_FACTOR => {
-                    if zone.tmax.celcius() < 0. {
-                        Vege::Frost
-                    } else if zone.tmin.celcius() > 3. {
-                        Vege::Sand
-                    } else {
-                        Vege::Stone
-                    }
-                }
-                _ => {
-                    if zone.tmin.celcius() > 0. {
-                        Vege::Sand
-                    } else {
-                        Vege::Stone
-                    }
-                }
-            }
+            (Thermo::Hot, Igro::Desert, _) => Vege::Sand,
+            (Thermo::Hot, Igro::Meadow, Parallaxo::Olivine) => Vege::Shrub,
+            (Thermo::Hot, Igro::Meadow, _) => Vege::Savanna,
+            (Thermo::Hot, Igro::Forest, Parallaxo::Olivine) => Vege::Shrub,
+            (Thermo::Hot, Igro::Forest, _) => Vege::Decideous,
+            (Thermo::Hot, Igro::Jungle, _) => Vege::Broadleaf,
         }
     }
 }

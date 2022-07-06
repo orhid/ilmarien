@@ -1,120 +1,113 @@
 use crate::units::{Precipitation, Temperature, Unit};
 
 pub struct Zone {
-    pub aridity: f64,
-    pub swing: f64,
-    pub tmin: Temperature,
-    pub tmax: Temperature,
+    pub thermos: Temperature,
+    pub igros: f64,
+    pub parallaxos: f64,
 }
 
 impl Zone {
     pub fn is_nan(&self) -> bool {
-        self.aridity.is_nan()
-            || self.swing.is_nan()
-            || self.tmin.release().is_nan()
-            || self.tmax.release().is_nan()
+        self.thermos.release().is_nan() || self.igros.is_nan() || self.parallaxos.is_nan()
     }
 
-    pub fn new(aridity: f64, swing: f64, tmin: Temperature, tmax: Temperature) -> Self {
+    pub fn new(thermos: Temperature, igros: f64, parallaxos: f64) -> Self {
         Self {
-            aridity,
-            swing,
-            tmin,
-            tmax,
+            thermos,
+            igros,
+            parallaxos,
         }
     }
-
-    /*
-    fn dist(&self, other: &Zone) -> f64 {
-        (self.aridity - other.aridity).abs() * 2.16
-            + (self.swing - other.swing).abs() / 2.0
-            + (self.tmin - other.tmin).abs() / TMP_RANGE
-            + (self.tmax - other.tmax).abs() / TMP_RANGE
-    }
-    */
 }
 
 impl From<&Chart> for Zone {
     fn from(chart: &Chart) -> Self {
         Self {
-            aridity: chart.aridity(),
-            swing: chart.swing(),
-            tmin: chart.tmin(),
-            tmax: chart.tmax(),
+            thermos: chart.thermos(),
+            igros: chart.igros(),
+            parallaxos: chart.parallaxos(),
         }
     }
 }
 
 #[derive(Clone)]
 pub struct Chart {
-    heat: Vec<Temperature>,
-    rain: Vec<Precipitation>,
-    pevt: Vec<Precipitation>,
+    temperature: Vec<Temperature>,
+    rainfall: Vec<Precipitation>,
+    evaporation: Vec<Precipitation>,
 }
 
 impl Chart {
     pub fn empty() -> Self {
         Self {
-            heat: Vec::new(),
-            rain: Vec::new(),
-            pevt: Vec::new(),
+            temperature: Vec::new(),
+            rainfall: Vec::new(),
+            evaporation: Vec::new(),
         }
     }
 
-    pub fn new(heat: Vec<Temperature>, rain: Vec<Precipitation>, pevt: Vec<Precipitation>) -> Self {
-        Self { heat, rain, pevt }
+    pub fn new(
+        temperature: Vec<Temperature>,
+        rainfall: Vec<Precipitation>,
+        evaporation: Vec<Precipitation>,
+    ) -> Self {
+        Self {
+            temperature,
+            rainfall,
+            evaporation,
+        }
     }
 
-    pub fn push(&mut self, heat: Temperature, rain: Precipitation, pevt: Precipitation) {
-        self.heat.push(heat);
-        self.rain.push(rain);
-        self.pevt.push(pevt);
+    pub fn push(
+        &mut self,
+        temperature: Temperature,
+        rainfall: Precipitation,
+        evaporation: Precipitation,
+    ) {
+        self.temperature.push(temperature);
+        self.rainfall.push(rainfall);
+        self.evaporation.push(evaporation);
     }
 
-    /// fucking backwards defined aridity index
-    fn aridity_index(&self) -> f64 {
-        self.rain.iter().map(|value| value.release()).sum::<f64>()
-            * self
-                .pevt
-                .iter()
-                .map(|value| value.release())
-                .sum::<f64>()
-                .recip()
+    /* # climatological indices */
+
+    fn deficiency(rainfall: f64, evaporation: f64) -> f64 {
+        (rainfall * evaporation.recip() - 1.).min(2.)
     }
 
-    pub fn aridity(&self) -> f64 {
-        self.aridity_index()
-    }
-
-    pub fn swing(&self) -> f64 {
-        // 1.0 -> highland
-        // -1.0 -> olivine
-        let mheat = Temperature::confine(
-            self.heat.iter().map(|value| value.release()).sum::<f64>() / self.heat.len() as f64,
-        );
-        let mut heat_filter = self.heat.iter().map(|&h| h > mheat);
-        let mut hrain = self.rain.clone();
-        hrain.retain(|_| heat_filter.next().unwrap());
-        2.0 * (hrain.iter().map(|value| value.release()).sum::<f64>()
-            / self.rain.iter().map(|value| value.release()).sum::<f64>())
-        .powf(1.44)
-            - 1.0
-    }
-
-    pub fn tmin(&self) -> Temperature {
-        *self
-            .heat
+    pub fn thermos(&self) -> Temperature {
+        self.temperature
             .iter()
-            .min_by(|a, b| a.partial_cmp(b).unwrap())
-            .unwrap_or(&Temperature::confine(f64::NAN))
+            .copied()
+            .reduce(|a, b| a + b)
+            .unwrap_or_else(|| Temperature::confine(0.))
+            / self.temperature.len() as f64
     }
 
-    pub fn tmax(&self) -> Temperature {
-        *self
-            .heat
+    pub fn igros(&self) -> f64 {
+        let moonly = self
+            .rainfall
             .iter()
-            .max_by(|a, b| a.partial_cmp(b).unwrap())
-            .unwrap_or(&Temperature::confine(f64::NAN))
+            .zip(self.evaporation.iter())
+            .map(|(r, p)| Self::deficiency(r.release(), p.release()))
+            .collect::<Vec<f64>>();
+        moonly.iter().sum::<f64>() / moonly.len() as f64
+    }
+
+    pub fn parallaxos(&self) -> f64 {
+        // 1.0 -> highland, wet summer + dry winter
+        // -1.0 -> olivine, dry summer + wet winter
+        let mean_temp = self.thermos().release();
+        self.temperature
+            .iter()
+            .zip(self.rainfall.iter())
+            .zip(self.evaporation.iter())
+            .map(|((temperature, rainfall), evaporation)| {
+                72. * (temperature.release() - mean_temp)
+                    * Self::deficiency(rainfall.release(), evaporation.release())
+            })
+            .sum::<f64>()
+            / self.temperature.len() as f64
     }
 }
 
@@ -124,95 +117,40 @@ mod test {
     use float_eq::assert_float_eq;
     const EPSILON: f64 = 0.001;
 
-    /*
-    #[test]
-    fn dist() {
-        let z0 = Zone::new(0.0, 0.0, 0.0, 0.0);
-        let z1 = Zone::new(1.0, 2.0, TMP_RANGE, TMP_RANGE);
-        assert_float_eq!(z0.dist(&z1), 5.16, abs <= EPSILON);
-    }
-    */
-
     #[test]
     fn zone_from_chart() {
-        let z0 = Zone::new(
-            1.,
-            0.321655,
-            Temperature::confine(1.),
-            Temperature::confine(2.),
-        );
+        let z0 = Zone::new(Temperature::confine(1.), 1., 0.321655);
         let z1 = Zone::from(&Chart {
-            heat: Vec::from([Temperature::confine(1.), Temperature::confine(2.)]),
-            rain: Vec::from([Precipitation::confine(1.), Precipitation::confine(3.)]),
-            pevt: Vec::from([Precipitation::confine(1.), Precipitation::confine(3.)]),
+            temperature: Vec::from([Temperature::confine(1.), Temperature::confine(2.)]),
+            rainfall: Vec::from([Precipitation::confine(1.), Precipitation::confine(3.)]),
+            evaporation: Vec::from([Precipitation::confine(1.), Precipitation::confine(3.)]),
         });
-        assert_float_eq!(z0.aridity, z1.aridity, abs <= EPSILON);
-        assert_float_eq!(z0.swing, z1.swing, abs <= EPSILON);
-        assert_float_eq!(z0.tmin.release(), z1.tmin.release(), abs <= EPSILON);
-        assert_float_eq!(z0.tmax.release(), z1.tmax.release(), abs <= EPSILON);
+        assert_float_eq!(z0.thermos.release(), z1.thermos.release(), abs <= EPSILON);
+        assert_float_eq!(z0.igros, z1.igros, abs <= EPSILON);
+        assert_float_eq!(z0.parallaxos, z1.parallaxos, abs <= EPSILON);
     }
 
     #[test]
     fn zone_from_empty_chart() {
         let z = Zone::from(&Chart::empty());
-        assert!(z.aridity.is_nan());
-        assert!(z.swing.is_nan());
-        assert!(z.tmin.release().is_nan());
-        assert!(z.tmax.release().is_nan());
+        assert!(z.thermos.release().is_nan());
+        assert!(z.igros.is_nan());
+        assert!(z.parallaxos.is_nan());
         assert!(z.is_nan());
     }
 
     #[test]
     fn push() {
         let mut chart = Chart {
-            heat: Vec::from([Temperature::confine(1.), Temperature::confine(2.)]),
-            rain: Vec::from([Precipitation::confine(1.), Precipitation::confine(2.)]),
-            pevt: Vec::from([Precipitation::confine(1.), Precipitation::confine(2.)]),
+            temperature: Vec::from([Temperature::confine(1.), Temperature::confine(2.)]),
+            rainfall: Vec::from([Precipitation::confine(1.), Precipitation::confine(2.)]),
+            evaporation: Vec::from([Precipitation::confine(1.), Precipitation::confine(2.)]),
         };
         chart.push(
             Temperature::confine(3.),
             Precipitation::confine(4.),
             Precipitation::confine(5.),
         );
-        assert_eq!(chart.heat.len(), 3);
-    }
-
-    #[test]
-    fn aridity() {
-        let chart = Chart {
-            heat: Vec::new(),
-            rain: Vec::from([
-                Precipitation::confine(1.),
-                Precipitation::confine(1.),
-                Precipitation::confine(1.),
-            ]),
-            pevt: Vec::from([
-                Precipitation::confine(2.),
-                Precipitation::confine(2.),
-                Precipitation::confine(2.),
-            ]),
-        };
-        assert_float_eq!(chart.aridity(), 0.5, abs <= EPSILON);
-    }
-
-    #[test]
-    fn swing() {
-        let chart = Chart {
-            heat: Vec::from([Temperature::confine(1.), Temperature::confine(3.)]),
-            rain: Vec::from([Precipitation::confine(1.), Precipitation::confine(3.)]),
-            pevt: Vec::new(),
-        };
-        assert_float_eq!(chart.swing(), 0.321655, abs <= EPSILON);
-    }
-
-    #[test]
-    fn tminmax() {
-        let chart = Chart {
-            heat: Vec::from([Temperature::confine(1.), Temperature::confine(3.)]),
-            rain: Vec::new(),
-            pevt: Vec::new(),
-        };
-        assert_float_eq!(chart.tmin().release(), 1.0, abs <= EPSILON);
-        assert_float_eq!(chart.tmax().release(), 3.0, abs <= EPSILON);
+        assert_eq!(chart.temperature.len(), 3);
     }
 }

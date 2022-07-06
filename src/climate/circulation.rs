@@ -278,12 +278,9 @@ pub fn continentality(
 
 /// potential amount of water that could be evaporated
 pub fn evapotranspiration_potential(temperature: &Brane<Temperature>) -> Brane<Precipitation> {
+    let curve = |x: f64| -> f64 { 2f64.powf(x) - 1. };
     temperature.operate_by_value_ref(|value| {
-        Precipitation::confine(
-            (value.celcius().max(0.) * Temperature::celcius_max().recip())
-                .powi(2)
-                .max(288f64.recip()),
-        )
+        Precipitation::confine(curve(value.release().max(0.)).max(216f64.recip()))
     })
 }
 
@@ -297,7 +294,7 @@ pub struct Counted<T> {
 
 impl<T> Counted<T> {
     pub fn new(value: T) -> Self {
-        Self { value, counter: 6 }
+        Self { value, counter: 2 }
     }
 
     pub fn unwrap(self) -> T {
@@ -386,14 +383,15 @@ pub fn rainfall(
                     old_rain.update(rain);
                     queue.push_back(target);
                 } else {
-                    old_rain.update(rain * 0.6 + old_rain.unwrap() * 0.4);
-                    // old_rain.decrement();
+                    old_rain.update(rain * 0.7 + old_rain.unwrap() * 0.3);
                 }
             }
         }
     }
 
-    precipitation.operate_by_value(|v| v.unwrap())
+    let adjustment_curve = |x: Precipitation| Precipitation::confine(2f64.powf(x.release()) - 1.);
+
+    precipitation.operate_by_index(|jndex| adjustment_curve(precipitation.grid[jndex].unwrap()))
 }
 
 /* # watershed */

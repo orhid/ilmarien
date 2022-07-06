@@ -89,7 +89,11 @@ impl<T: Clone + Copy> Renderable<T> for Brane<T> {
     where
         S: Ink<T>,
     {
-        trace!("rendering brane {}", variable);
+        trace!(
+            "rendering brane {} at resolution {}",
+            variable,
+            self.resolution.release()
+        );
         let one: i32 = self.resolution.into();
         let mut terraces = HashMap::new();
         for datum in (0..self.resolution.square()).map(|j| DatumZa::enravel(j, self.resolution)) {
@@ -138,7 +142,11 @@ impl<T: Clone + Copy> Renderable<T> for Brane<T> {
     where
         S: Ink<T>,
     {
-        trace!("rendering brane {}", variable);
+        trace!(
+            "rendering triple brane {} at resolution {}",
+            variable,
+            self.resolution.release()
+        );
         let one: i32 = self.resolution.into();
         let mut terraces = HashMap::new();
         for datum in (0..self.resolution.square()).map(|j| DatumZa::enravel(j, self.resolution)) {
