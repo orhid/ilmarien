@@ -105,8 +105,8 @@ pub fn altitude_above_ocean_level(
 
 fn insolation_at_datum(datum: DatumRe, solar_time: f64) -> f64 {
     let solar_ellipse = |time: f64| -> DatumRe {
-        let eccentricity: f64 = 0.48;
-        let radius_major: f64 = 0.32;
+        let eccentricity: f64 = 0.42;
+        let radius_major: f64 = 0.36;
         let angle: f64 = -TAU * 3f64.recip();
 
         let linear = eccentricity * radius_major;

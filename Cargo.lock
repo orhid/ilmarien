@@ -174,9 +174,9 @@ dependencies = [
 
 [[package]]
 name = "float_eq"
-version = "0.6.0"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c8f056283ef54abb302ea8417fdad8e400b5207227abbeebd62c13f7b214bb9"
+checksum = "b59b6469c35ab601d6487d28879bccfbe8c896c33a3fe699c4d29817e552cc58"
 
 [[package]]
 name = "float_next_after"
@@ -733,9 +733,9 @@ checksum = "fe0f37c9e8f3c5a4a66ad655a93c74daac4ad00c441533bf5c6e7990bb42604e"
 
 [[package]]
 name = "splines"
-version = "4.0.3"
+version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c94307351d02448532cdf65ea95bfdd529183d360a60fb8c8bdca6c90af55542"
+checksum = "85d3c90d443c10f66d69fc45269f3bf1d3b0171c239751fe6129b7d79a82c535"
 
 [[package]]
 name = "stable_deref_trait"

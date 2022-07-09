@@ -109,8 +109,17 @@ impl Cosmos {
         Self { altitude, charts }
     }
 
-    pub fn simulate() -> Self {
-        let elevation = Brane::<Elevation>::load("elevation".to_string()).downgrade(3);
+    pub fn load() -> Self {
+        let elevation = Brane::<Elevation>::load("elevation".to_string());
+        let resolution = elevation.resolution;
+        Self::new(
+            elevation,
+            Brane::create_by_index(resolution, |_| Chart::new(vec![], vec![], vec![])),
+        )
+    }
+
+    pub fn simulate(self) -> Self {
+        let elevation = self.altitude;
         let resolution = elevation.resolution;
         let ocean_lv = Elevation::confine(OCNLV);
 

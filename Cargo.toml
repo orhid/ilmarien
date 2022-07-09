@@ -24,7 +24,7 @@ geo-svg = "0.5"
 petgraph = "0.6"
 nalgebra = "0.31"
 noise = { version = "0.7", default-features = false }
-splines = "4.0"
+splines = "4.1"
 
 [dev-dependencies]
-float_eq = "0.6"
+float_eq = "1.0"

@@ -126,6 +126,87 @@ impl<T: Send> Brane<T> {
     }
 }
 
+/* ## raws */
+
+impl From<Brane<f64>> for Brane<u8> {
+    fn from(brane: Brane<f64>) -> Self {
+        brane.operate_by_value(|value| (value * 2.0_f64.powi(8) - 1.0) as u8)
+    }
+}
+
+impl From<Brane<u8>> for Brane<f64> {
+    fn from(brane: Brane<u8>) -> Self {
+        brane.operate_by_value(|value| value as f64 / (2.0_f64.powi(8) - 1.0))
+    }
+}
+
+impl Brane<u8> {
+    /// save brane to a .tif file
+    pub fn save_raw_low(&self, variable: String) {
+        let path_name = format!("static/{}-u8-{}.tiff", variable, self.resolution.release());
+        trace!("saving brane to {}", path_name);
+        TiffEncoder::new(&mut fs::File::create(&Path::new(&path_name)).unwrap())
+            .unwrap()
+            .write_image::<colortype::Gray8>(
+                self.resolution.release() as u32,
+                self.resolution.release() as u32,
+                &self.grid,
+            )
+            .unwrap();
+    }
+
+    /// load brane with a given name from a .tif file
+    pub fn load_raw_low(variable: String) -> Self {
+        let mut varextended = variable;
+        varextended.push_str("-u8");
+
+        let resolution: Resolution = {
+            let mut files = Vec::new();
+            if let Ok(entries) = fs::read_dir("static") {
+                for entry in entries.flatten() {
+                    if let Ok(name) = entry.file_name().into_string() {
+                        if name.starts_with(&varextended) {
+                            files.push(name);
+                        }
+                    }
+                }
+            }
+            let mut resolutions = files
+                .iter()
+                .map(|file| {
+                    file.split_once('.')
+                        .expect("file should have one extension")
+                        .0
+                        .rsplit_once('-')
+                        .expect("last part should be resolution")
+                        .1
+                        .parse::<usize>()
+                        .expect("variable contains something weird")
+                })
+                .collect::<Vec<usize>>();
+            resolutions.sort_unstable();
+            Resolution::confine(
+                resolutions
+                    .pop()
+                    .expect("found no brane for specified variable"),
+            )
+        };
+
+        let path_name = format!("static/{}-{}.tiff", varextended, resolution.release());
+        trace!("loading brane from {}", path_name);
+        let mut file = fs::File::open(&Path::new(&path_name)).unwrap();
+        let mut tiff = Decoder::new(&mut file).unwrap();
+
+        Self::new(
+            match tiff.read_image().unwrap() {
+                DecodingResult::U8(vector) => vector,
+                _ => panic!(),
+            },
+            resolution,
+        )
+    }
+}
+
 impl From<Brane<f64>> for Brane<u16> {
     fn from(brane: Brane<f64>) -> Self {
         brane.operate_by_value(|value| (value * 2.0_f64.powi(16) - 1.0) as u16)
@@ -140,7 +221,7 @@ impl From<Brane<u16>> for Brane<f64> {
 
 impl Brane<u16> {
     /// save brane to a .tif file
-    fn save_raw(&self, variable: String) {
+    pub fn save_raw(&self, variable: String) {
         let path_name = format!("static/{}-u16-{}.tiff", variable, self.resolution.release());
         trace!("saving brane to {}", path_name);
         TiffEncoder::new(&mut fs::File::create(&Path::new(&path_name)).unwrap())
@@ -154,7 +235,7 @@ impl Brane<u16> {
     }
 
     /// load brane with a given name from a .tif file
-    fn load_raw(variable: String) -> Self {
+    pub fn load_raw(variable: String) -> Self {
         let mut varextended = variable;
         varextended.push_str("-u16");
 
@@ -205,6 +286,8 @@ impl Brane<u16> {
     }
 }
 
+/* ## units */
+
 impl<T> Brane<T>
 where
     T: Clone + Copy + PartialOrd,
@@ -237,19 +320,17 @@ where
 }
 
 impl Brane<f64> {
-    /*
     /* # saving and loading */
 
     /// save brane to a .tif file
-    fn save_raw(&self, variable: String) {
+    pub fn save_f64(&self, variable: String) {
         Brane::<u16>::from(self.clone()).save_raw(variable);
     }
 
     /// load brane with a given name from a .tif file
-    fn load_raw(variable: String) -> Self {
+    pub fn load_f64(variable: String) -> Self {
         Self::from(Brane::<u16>::load_raw(variable))
     }
-    */
 
     /* # statistics */
 
@@ -344,8 +425,14 @@ impl<U> Brane<U>
 where
     U: Unit + Send + Copy,
     U::Raw: Send,
+    Brane<u8>: From<Brane<U::Raw>>,
     Brane<u16>: From<Brane<U::Raw>>,
 {
+    /// save brane to a .tif file
+    pub fn save_low(&self, variable: String) {
+        Brane::<u8>::from(self.release()).save_raw_low(variable);
+    }
+
     /// save brane to a .tif file
     pub fn save(&self, variable: String) {
         Brane::<u16>::from(self.release()).save_raw(variable);
@@ -355,8 +442,15 @@ impl<U> Brane<U>
 where
     U: Unit + Send,
     U::Raw: Send,
+    Brane<U::Raw>: From<Brane<u8>>,
     Brane<U::Raw>: From<Brane<u16>>,
 {
+    /// load brane with a given name from a .tif file
+    pub fn load_low(variable: String) -> Self {
+        Brane::<U::Raw>::from(Brane::<u8>::load_raw_low(variable))
+            .operate_by_value(|value| U::confine(value))
+    }
+
     /// load brane with a given name from a .tif file
     pub fn load(variable: String) -> Self {
         Brane::<U::Raw>::from(Brane::<u16>::load_raw(variable))
